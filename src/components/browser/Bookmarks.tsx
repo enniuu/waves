@@ -5,6 +5,7 @@ import { canonicalize, encodeMochiUrl } from "../../core/runtime/utils.ts";
 import { useManagedModal } from "../../core/ui/modal.ts";
 import { toast } from "../../core/ui/toast.ts";
 import { useImageLoad } from "../../hooks/useImageLoad.ts";
+import { warmProxyRuntime } from "../../core/proxy/proxyRuntime.ts";
 import {
   IconCrossMedium,
   IconPencil,
@@ -211,6 +212,7 @@ export default function Bookmarks() {
     <div
       id="bookmarks-container"
       class={isEditMode ? "bookmarks-edit-mode" : ""}
+      onMouseEnter={warmProxyRuntime}
     >
       <div class="bookmarks-header">
         <h3 id="bookmarks-title">bookmarks</h3>

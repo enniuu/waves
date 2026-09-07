@@ -71,6 +71,14 @@ const BASIC_OBFUSCATION_OPTIONS = {
 };
 
 const RUNTIME_ASSETS = [
+  {
+    logicalPath: "/bmux/worker.js",
+    source: ["node_modules", "@mercuryworkshop", "bare-mux", "dist", "worker.js"],
+  },
+  ...["epoxy", "libcurl"].map((transport) => ({
+    logicalPath: `/${transport}/index.mjs`,
+    source: ["node_modules", "@mercuryworkshop", `${transport}-transport`, "dist", "index.mjs"],
+  })),
   { logicalPath: "/b/fl/folio.js", source: ["public", "b", "fl", "folio.js"] },
   {
     logicalPath: "/b/fl/controller.inject.js",
@@ -138,6 +146,13 @@ function opaqueFileName(logicalPath, buildId) {
     .digest("hex")
     .slice(0, 12);
   return `b/${hash}${extension}`;
+}
+
+export function createRuntimePathMap(buildId) {
+  return Object.fromEntries(RUNTIME_ASSETS.map(({ logicalPath }) => [
+    logicalPath,
+    `/${opaqueFileName(logicalPath, buildId)}`,
+  ]));
 }
 
 function addSensitiveToken(tokens, token) {
@@ -223,6 +238,9 @@ export default function lyraPlugin(
       return {
         define: {
           __LYRA_BUILD_ID__: JSON.stringify(command === "build" ? buildId : ""),
+          __LYRA_RUNTIME_PATHS__: JSON.stringify(command === "build"
+            ? Object.fromEntries(Object.entries(createRuntimePathMap(buildId)).map(([key, value]) => [key.slice(1), value]))
+            : {}),
         },
       };
     },
@@ -259,14 +277,10 @@ export default function lyraPlugin(
       const cssTokenMap = new Map([
         ...createCssTokenMap(cssSources, buildId),
         ...createFolioTokenMap(buildId),
+        ["bare-mux-path", `x${createHash("sha256").update(`${buildId}\0bare-mux-path`).digest("hex").slice(0, 20)}`],
       ]);
 
-      const pathAliases = new Map(
-        RUNTIME_ASSETS.map(({ logicalPath }) => [
-          logicalPath,
-          `/${opaqueFileName(logicalPath, buildId)}`,
-        ]),
-      );
+      const pathAliases = new Map(Object.entries(createRuntimePathMap(buildId)));
       const runtimeBundleFileName = opaqueFileName("/b/all.js", buildId);
       pathAliases.set("/b/all.js", `/${runtimeBundleFileName}`);
 
@@ -283,7 +297,7 @@ export default function lyraPlugin(
           throw new Error("required runtime artifact is missing... /ᐠ - ˕ -マ");
         }
 
-        if (logicalPath.endsWith(".js")) {
+        if (/\.(m?js)$/.test(logicalPath)) {
           const sourceCode = rewriteBuildTokens(
             stripSourceMapComments(contents.toString("utf8")),
             cssTokenMap,
@@ -311,7 +325,9 @@ export default function lyraPlugin(
         path.join(projectRoot, "public", "b", "fl", "controller.api.js"),
         path.join(projectRoot, "public", "b", "fl", "folio-utils.js"),
       ];
-      const bundleParts = [];
+      const bundleParts = [
+        'try { localStorage.removeItem(["bare", "mux", "path"].join("-")); } catch {}',
+      ];
       for (const bundleInputPath of bundleInputPaths) {
         try {
           const sourceCode = stripSourceMapComments(

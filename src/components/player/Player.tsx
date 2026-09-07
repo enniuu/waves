@@ -239,6 +239,29 @@ function hasBufferedTime(video: HTMLVideoElement, seconds: number): boolean {
   return false;
 }
 
+function buildNextEpisodeStreamUrl(
+  episode: number,
+  episodeParts: PlaybackEpisodePartRange[],
+  identityIds: AnimeIds,
+  language: "sub" | "dub",
+): string {
+  const part = episodeParts.find(
+    (candidate) => episode >= candidate.start && episode <= candidate.end,
+  );
+  const sourceEpisode = part ? episode - part.start + 1 : episode;
+  const ids = normalizeAnimeIds({
+    ...(part?.ids || identityIds),
+    anikotoEpisode: undefined,
+  });
+  if (!hasMegaPlayIdentifier(ids)) return "";
+  const query = new URLSearchParams({
+    episode: String(sourceEpisode),
+    language,
+  });
+  appendMegaPlayParams(query, ids);
+  return `/stream/anikoto?${query}`;
+}
+
 function cueTextToPlainText(value: string): string {
   const template = document.createElement("template");
   template.innerHTML = value.replace(/<br\s*\/?>/gi, "\n");
@@ -1221,6 +1244,61 @@ export default function Player() {
       buffering: false,
     });
   }, [episodeNumber, language, videoSrc, syncMediaState]);
+
+  useEffect(() => {
+    if (
+      episodeNumber < 1 ||
+      episodeCount <= episodeNumber ||
+      isAnimeMovieFormat(format)
+    ) {
+      return;
+    }
+    const nextVideoSrc = buildNextEpisodeStreamUrl(
+      episodeNumber + 1,
+      episodeParts,
+      identityIds,
+      language,
+    );
+    if (!nextVideoSrc) return;
+
+    const preloadVideo = document.createElement("video");
+    preloadVideo.preload = "auto";
+    preloadVideo.crossOrigin = "anonymous";
+    preloadVideo.muted = true;
+    preloadVideo.playsInline = true;
+    let hls: Hls | null = null;
+
+    if (Hls.isSupported()) {
+      hls = new Hls({
+        enableWorker: true,
+        backBufferLength: 0,
+        maxBufferLength: 12,
+        maxMaxBufferLength: 12,
+      });
+      hls.attachMedia(preloadVideo);
+      hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+        hls?.loadSource(nextVideoSrc);
+      });
+    } else if (preloadVideo.canPlayType("application/vnd.apple.mpegurl")) {
+      preloadVideo.src = nextVideoSrc;
+      preloadVideo.load();
+    }
+
+    return () => {
+      hls?.destroy();
+      preloadVideo.pause();
+      preloadVideo.removeAttribute("src");
+      preloadVideo.load();
+    };
+  }, [
+    episodeCount,
+    episodeNumber,
+    episodeParts,
+    format,
+    identityIds.anilist,
+    identityIds.mal,
+    language,
+  ]);
 
   const refreshAutoQuality = useCallback(() => {
     const hls = hlsRef.current;

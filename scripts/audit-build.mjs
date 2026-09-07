@@ -18,6 +18,10 @@ const sensitiveCssPatterns = [
   new RegExp(`@(?:-webkit-)?keyframes\\s+[_a-zA-Z][\\w-]*${sensitiveTerm}[\\w-]*`, "i"),
 ];
 const forbiddenText = [
+  "bare-mux-path",
+  "/bmux/worker.js",
+  "/epoxy/index.mjs",
+  "/libcurl/index.mjs",
   "FolioClient",
   "FolioFetchHandler",
   "FolioFetchTrackedClient",
@@ -120,14 +124,14 @@ if (sourceMaps.length > 0) {
 }
 
 const invalidAssetNames = distFiles
-  .filter((filePath) => [".css", ".js"].includes(path.extname(filePath)))
+  .filter((filePath) => [".css", ".js", ".mjs"].includes(path.extname(filePath)))
   .map((filePath) => path.relative(distPath, filePath).replaceAll(path.sep, "/"))
   .filter(
     (fileName) =>
       !new RegExp(
         `^assets/${buildMetadata.build}/[A-Za-z0-9_-]{12}\\.(?:css|js)$`,
       ).test(fileName) &&
-      !/^b\/[a-f0-9]{10,12}\.js$/.test(fileName),
+      !/^b\/[a-f0-9]{10,12}\.m?js$/.test(fileName),
   );
 if (invalidAssetNames.length > 0) {
   fail("production script or style names are not opaque", invalidAssetNames);

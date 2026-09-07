@@ -32,6 +32,8 @@ export default [
       "services/**/target/**",
       "src/b/**",
       "vendor/**",
+      "filter-check/.local/**",
+      "filter-check/runs/**",
     ],
   },
   {

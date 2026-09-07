@@ -174,7 +174,6 @@ export function useSearchInputBindings({
     };
 
     const onFocus = () => {
-      warmProxyRuntime();
       if (!syncHistory) return;
       const activeTab = store.getActiveTab();
       if (!activeTab?.historyManager) return;
@@ -183,6 +182,10 @@ export function useSearchInputBindings({
         canGoBack: activeTab.historyManager.canGoBack(),
         canGoForward: activeTab.historyManager.canGoForward(),
       });
+    };
+
+    const onMouseEnter = () => {
+      warmProxyRuntime();
     };
 
     const onKeyup = async (e: KeyboardEvent) => {
@@ -203,11 +206,13 @@ export function useSearchInputBindings({
 
     input.addEventListener("input", onInput);
     input.addEventListener("focus", onFocus);
+    input.addEventListener("mouseenter", onMouseEnter);
     input.addEventListener("keyup", onKeyup);
 
     return () => {
       input.removeEventListener("input", onInput);
       input.removeEventListener("focus", onFocus);
+      input.removeEventListener("mouseenter", onMouseEnter);
       input.removeEventListener("keyup", onKeyup);
     };
   }, [inputId, suggestionsId, syncHistory]);
