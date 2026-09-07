@@ -538,7 +538,7 @@ if ! command -v eturnalctl >/dev/null 2>&1 && [ ! -x /opt/eturnal/bin/eturnalctl
 fi
 export PATH="/opt/eturnal/bin:$PATH"
 
-BUN_VERSION="1.4.1"
+BUN_VERSION="1.4.2"
 BUN_CURRENT_VERSION="$(bun --version 2>/dev/null || true)"
 if [ "$BUN_CURRENT_VERSION" != "$BUN_VERSION" ]; then
   log "installing bun $BUN_VERSION"

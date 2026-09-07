@@ -4,9 +4,9 @@
   "description": "a really cool web-proxy",
   "type": "module",
   "license": "AGPL-3.0-or-later",
-  "packageManager": "bun@1.4.1",
+  "packageManager": "bun@1.4.2",
   "engines": {
-    "bun": "1.4.1"
+    "bun": "1.4.2"
   },
   "scripts": {
     "build-folio": "bun scripts/build-folio.mjs",
