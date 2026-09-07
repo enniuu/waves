@@ -235,19 +235,18 @@ export function searchGames(
   const normalizedQuery = normalizeCatalogText(query);
   if (!normalizedQuery) return games as GameEntry[];
 
-  return games
-    .map((game, index) => ({
-      game,
-      index,
-      rank: catalogMatchRank(
-        game._normalizedName || normalizeCatalogText(game.name),
-        game._normalizedAuthor || normalizeCatalogText(game.author || ""),
-        normalizedQuery,
-      ),
-    }))
-    .filter((match) => match.rank >= 0)
-    .sort((a, b) => a.rank - b.rank || a.index - b.index)
-    .map((match) => match.game);
+  const tokens = normalizedQuery.split(" ");
+  const ranked: GameEntry[][] = [[], [], [], [], []];
+  for (const game of games) {
+    const rank = catalogMatchRank(
+      game._normalizedName ?? normalizeCatalogText(game.name),
+      game._normalizedAuthor ?? normalizeCatalogText(game.author || ""),
+      normalizedQuery,
+      tokens,
+    );
+    if (rank >= 0) ranked[rank]!.push(game);
+  }
+  return ranked.flat();
 }
 
 async function saveToCache(source: GameSourceKey, games: GameEntry[]): Promise<GameEntry[]> {

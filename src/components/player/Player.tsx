@@ -330,11 +330,14 @@ export default function Player() {
   const anilistId = parseInt(params.get("anilist_id") || "0", 10);
   const malId = parseInt(params.get("mal_id") || "0", 10);
   const anikotoEpisodeId = params.get("anikoto_episode_id") || "";
-  const identityIds = normalizeAnimeIds({
-    anilist: anilistId,
-    mal: malId,
-    anikotoEpisode: anikotoEpisodeId,
-  });
+  const identityIds = useMemo(
+    () => normalizeAnimeIds({
+      anilist: anilistId,
+      mal: malId,
+      anikotoEpisode: anikotoEpisodeId,
+    }),
+    [anilistId, malId, anikotoEpisodeId],
+  );
   const episodeParts = useMemo(
     () => parsePlaybackEpisodeParts(params.get("episode_parts")),
     [params],

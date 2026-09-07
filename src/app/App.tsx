@@ -4,7 +4,6 @@ import {
   Suspense,
   useState,
 } from "preact/compat";
-import { scheduleIdleTask } from "../core/runtime/scheduler.ts";
 import Sidebar from "../components/browser/Sidebar.tsx";
 import NavBar from "../components/browser/NavBar.tsx";
 import SearchBar from "../components/browser/SearchBar.tsx";
@@ -64,19 +63,15 @@ export default function App() {
   const [animeMounted, setAnimeMounted] = useState(false);
   const [newTabMounted, setNewTabMounted] = useState(false);
   const [settingsMounted, setSettingsMounted] = useState(false);
-  const [newTabOpenOnMount, setNewTabOpenOnMount] = useState(false);
-  const [settingsOpenOnMount, setSettingsOpenOnMount] = useState(false);
   const [peakIndex] = useState(getRandomPeakIndex);
 
   useEffect(() => {
     const showGames = () => setGamesMounted(true);
     const showAnime = () => setAnimeMounted(true);
     const showNewTab = () => {
-      setNewTabOpenOnMount(true);
       setNewTabMounted(true);
     };
     const showSettings = () => {
-      setSettingsOpenOnMount(true);
       setSettingsMounted(true);
     };
     const runtimeWindow = window as typeof window & {
@@ -90,18 +85,7 @@ export default function App() {
     runtimeWindow.showNewTabModal = showNewTab;
     window.toggleSettingsModal = showSettings;
 
-    const cancelSettingsPreload = scheduleIdleTask(
-      () => setSettingsMounted(true),
-      500,
-    );
-    const cancelNewTabPreload = scheduleIdleTask(
-      () => setNewTabMounted(true),
-      900,
-    );
-
     return () => {
-      cancelSettingsPreload();
-      cancelNewTabPreload();
       if (window.showGameMenu === showGames) delete window.showGameMenu;
       if (window.toggleGameMenu === showGames) delete window.toggleGameMenu;
       if (window.showAnimeMenu === showAnime) delete window.showAnimeMenu;
@@ -154,12 +138,12 @@ export default function App() {
       </div>
       {newTabMounted && (
         <Suspense fallback={null}>
-          <NewTabModal openOnMount={newTabOpenOnMount} />
+          <NewTabModal openOnMount />
         </Suspense>
       )}
       {settingsMounted && (
         <Suspense fallback={null}>
-          <SettingsModal openOnMount={settingsOpenOnMount} />
+          <SettingsModal openOnMount />
         </Suspense>
       )}
       <div id="overlay" class="overlay" />

@@ -651,9 +651,9 @@ export default function SettingsModal({
           {activeTab === "advanced" && (
           <div class="tab-content active">
             <div class="settings-item">
-              <label>fallback transport</label>
+              <label>other transport</label>
               <p>
-                mochi handles http requests; this handles websockets and
+                our transport handles http requests; this handles websockets and
                 fallback traffic.
               </p>
               <Selector
@@ -708,10 +708,10 @@ export default function SettingsModal({
           <div class="tab-content active">
             <div class="settings-item rivet-manager-header">
                 <label>extensions</label>
-                <p>install chrome extension into the browser.</p>
+                <p>install chrome extensions into the browser.</p>
               <div class="rivet-manager-actions">
                 <label class="rivet-file-button rivet-action-primary">
-                  {extensionBusy ? "working…" : "install extension"}
+                  {extensionBusy ? "working…" : "upload extension"}
                   <input
                     type="file"
                     accept=".zip,.crx,application/zip"

@@ -1606,19 +1606,18 @@ export function searchAnimeLocally(
   const normalizedQuery = normalizeCatalogText(query);
   if (!normalizedQuery) return anime as AnimeEntry[];
 
-  return anime
-    .map((entry, index) => ({
-      entry,
-      index,
-      rank: catalogMatchRank(
-      entry._normalizedTitle || normalizeCatalogText(entry.title),
-        entry._searchText || "",
-        normalizedQuery,
-      ),
-    }))
-    .filter((match) => match.rank >= 0)
-    .sort((a, b) => a.rank - b.rank || a.index - b.index)
-    .map((match) => match.entry);
+  const tokens = normalizedQuery.split(" ");
+  const ranked: AnimeEntry[][] = [[], [], [], [], []];
+  for (const entry of anime) {
+    const rank = catalogMatchRank(
+      entry._normalizedTitle ?? normalizeCatalogText(entry.title),
+      entry._searchText || "",
+      normalizedQuery,
+      tokens,
+    );
+    if (rank >= 0) ranked[rank]!.push(entry);
+  }
+  return ranked.flat();
 }
 
 function filterAnimeSearchResults(
@@ -1627,12 +1626,14 @@ function filterAnimeSearchResults(
 ): AnimeEntry[] {
   const normalizedQuery = normalizeCatalogText(query);
   if (!normalizedQuery) return anime as AnimeEntry[];
+  const tokens = normalizedQuery.split(" ");
   return anime.filter(
     (entry) =>
       catalogMatchRank(
-      entry._normalizedTitle || normalizeCatalogText(entry.title),
+        entry._normalizedTitle ?? normalizeCatalogText(entry.title),
         entry._searchText || "",
         normalizedQuery,
+        tokens,
       ) >= 0,
   );
 }

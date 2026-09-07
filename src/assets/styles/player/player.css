@@ -118,7 +118,7 @@
   box-sizing: border-box;
   min-height: 36px;
   padding: 8px 12px;
-  border: 2px solid var(--border-transparent);
+  border: none;
   border-radius: 15px;
   background: var(--bg-surface-7);
   color: var(--text-primary);
@@ -343,7 +343,7 @@
   border: none;
   color: var(--color-icon);
   cursor: pointer;
-  padding: 5px;
+  padding: 8px;
   display: flex;
   align-items: center;
   justify-content: center;

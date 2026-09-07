@@ -55,7 +55,7 @@ export function attachSearchLight(
   };
 
   const scheduleRectUpdate = (): void => {
-    if (rectRaf) return;
+    if (!isHovering || rectRaf !== null) return;
     rectRaf = requestAnimationFrame(() => {
       rectRaf = null;
       if (isHovering) updateRect();
@@ -81,6 +81,8 @@ export function attachSearchLight(
 
     const elasticX = Math.min(Math.max(velocityX * 0.5, -20), 20);
     const elasticY = Math.min(Math.max(velocityY * 0.5, -20), 20);
+    velocityX *= 0.85;
+    velocityY *= 0.85;
 
     if (scaleDirty) {
       lightBg!.style.transform = `scale(${targetScale})`;

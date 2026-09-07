@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "preact/hooks";
+import { memo } from "preact/compat";
 import { store, useStore } from "../../state/store.ts";
 import { sidebarHiddenSignal } from "../../core/ui/uiSignals";
 import { IconCrossMedium, IconPlusMedium } from "../icons";
@@ -39,19 +40,20 @@ function TabIconInner({ favicon, eager }: { favicon: string | null | undefined; 
   );
 }
 
-function Tab({
-  tab,
+const Tab = memo(function Tab({
+  id,
+  title,
+  favicon,
+  isLoading,
   isActive,
   isSplitPair,
   splitSide,
   showClose,
 }: {
-  tab: {
-    id: number;
-    title: string;
-    favicon: string | null;
-    isLoading: boolean;
-  };
+  id: number;
+  title: string;
+  favicon: string | null;
+  isLoading: boolean;
   isActive: boolean;
   isSplitPair: boolean;
   splitSide: string | null;
@@ -70,30 +72,30 @@ function Tab({
   const onTabClick = useCallback(
     (e: MouseEvent) => {
       if (e.target && (e.target as HTMLElement).closest(".tab-close")) return;
-      store.switchTab(tab.id);
+      store.switchTab(id);
     },
-    [tab.id],
+    [id],
   );
 
   const onCloseClick = useCallback(
     (e: MouseEvent) => {
       e.stopPropagation();
-      store.closeTab(tab.id);
+      store.closeTab(id);
     },
-    [tab.id],
+    [id],
   );
 
   return (
     <div
       class={classes.join(" ")}
-      data-tab-id={tab.id}
+      data-tab-id={id}
       onClick={onTabClick}
     >
-      <TabIcon favicon={tab.favicon} eager={isActive} />
+      <TabIcon favicon={favicon} eager={isActive} />
       <span class="tab-title">
-        {tab.isLoading && tab.title === "new tab"
+        {isLoading && title === "new tab"
           ? "fetching data..."
-          : tab.title}
+          : title}
       </span>
       <button
         class="tab-close"
@@ -104,7 +106,7 @@ function Tab({
       </button>
     </div>
   );
-}
+});
 
 export default function Sidebar() {
   const tabs = useStore((s) => s.tabs);
@@ -196,7 +198,10 @@ export default function Sidebar() {
           return (
             <Tab
               key={tab.id}
-              tab={tab}
+              id={tab.id}
+              title={tab.title}
+              favicon={tab.favicon}
+              isLoading={tab.isLoading}
               isActive={isActive}
               isSplitPair={isSplitPair}
               splitSide={splitSide}

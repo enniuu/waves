@@ -1,8 +1,4 @@
-import {
-  exportSyncSnapshot,
-  importSyncSnapshot,
-  type SyncSnapshot,
-} from "./syncSnapshot.ts";
+import type { SyncSnapshot } from "./syncSnapshot.ts";
 
 declare global {
   interface Window {
@@ -14,5 +10,11 @@ declare global {
   }
 }
 
-window.lyraExportAllData = exportSyncSnapshot;
-window.lyraImportDataFromObject = importSyncSnapshot;
+window.lyraExportAllData = async () => {
+  const { exportSyncSnapshot } = await import("./syncSnapshot.ts");
+  return exportSyncSnapshot();
+};
+window.lyraImportDataFromObject = async (data, callback) => {
+  const { importSyncSnapshot } = await import("./syncSnapshot.ts");
+  return importSyncSnapshot(data, callback);
+};
