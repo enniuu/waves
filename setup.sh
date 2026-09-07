@@ -191,7 +191,7 @@ kill_service_processes() {
   local pattern
   local signal
   local used=0
-  local names=(tls-approval lyra nuru mochi cloudsync isao caddy eturnal coturn turnserver anubis)
+  local names=(tls-approval lyra nuru mochi cloudsync isao caddy eturnal coturn turnserver)
   local patterns=(
     '[s]ervices/tls-approval/server\.js'
     '[s]erver/prod\.mjs'
@@ -271,7 +271,7 @@ done < <(
 )
 sudo systemctl stop "pm2-$USER.service" 2>/dev/null || true
 stop_pm2
-for svc in tls-approval lyra waves ask cloudsync isao mochi nuru nuru-route.timer nuru-route wg-quick@wg0 caddy anubis eturnal coturn; do
+for svc in tls-approval lyra waves ask cloudsync isao mochi nuru nuru-route.timer nuru-route wg-quick@wg0 caddy eturnal coturn; do
   sudo systemctl stop "$svc" 2>/dev/null || true
   sudo systemctl disable "$svc" 2>/dev/null || true
 done
@@ -279,8 +279,6 @@ if command -v docker >/dev/null 2>&1; then
   if sudo docker compose version >/dev/null 2>&1 && [ -f "$ROOT/services/turn/compose.yml" ]; then
     sudo docker compose -f "$ROOT/services/turn/compose.yml" down --remove-orphans >/dev/null 2>&1 || true
   fi
-  sudo docker stop anubis 2>/dev/null || true
-  sudo docker rm anubis 2>/dev/null || true
 fi
 if command -v wg-quick >/dev/null 2>&1; then
   sudo wg-quick down wg0 2>/dev/null || true
@@ -1110,33 +1108,6 @@ sudo mkdir -p /etc/mochi
 for ((i = 0; i < MOCHI_INSTANCES; i++)); do
   printf 'MOCHI_PORT=%s\n' "$((4100 + i))" | sudo tee "/etc/mochi/instance-$i.env" >/dev/null
 done
-
-retry 3 sudo docker pull "ghcr.io/techarohq/anubis:latest"
-
-if sudo docker ps -a | grep -q "anubis"; then
-  sudo docker stop anubis 2>/dev/null || true
-  sudo docker rm anubis 2>/dev/null || true
-fi
-
-cat <<'EOF' | sudo tee /etc/anubis-policy.yaml
-bots:
-  - import: (data)/meta/default-config.yaml
-EOF
-if [ -f /etc/anubis-policy.yaml ]; then
-  success "/etc/anubis-policy.yaml applied"
-else
-  fail "/etc/anubis-policy.yaml was not created"
-  exit 1
-fi
-
-sudo docker run -d --name anubis \
-  --network="host" \
-  --restart unless-stopped \
-  -e TARGET="http://127.0.0.1:4444" \
-  -e OG_PASSTHROUGH="true" \
-  -e POLICY_FNAME=/botPolicies.yaml \
-  -v /etc/anubis-policy.yaml:/botPolicies.yaml \
-  "ghcr.io/techarohq/anubis:latest"
 
 "$BUN_BIN" --bun run build
 
