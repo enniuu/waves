@@ -87,6 +87,7 @@ pub struct ServerConfig {
     pub tls_keypair: Option<[PathBuf; 2]>,
     pub stats_endpoint: Option<StatsEndpoint>,
     pub use_real_ip_headers: bool,
+    pub websocket_origin_scheme: Option<String>,
     pub non_ws_response: String,
     pub max_message_size: usize,
     pub log_level: LevelFilter,
@@ -298,6 +299,7 @@ impl Default for ServerConfig {
             stats_endpoint: None,
 
             use_real_ip_headers: false,
+            websocket_origin_scheme: None,
             non_ws_response: ":3".to_string(),
 
             max_message_size: tuning::max_message_size(),

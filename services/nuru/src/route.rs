@@ -21,7 +21,7 @@ use crate::{
     generate_stats,
     listener::{ServerStream, ServerStreamExt, ServerStreamRead, ServerStreamWrite},
     stream::WebSocketStreamWrapper,
-    upgrade::{is_upgrade_request, upgrade},
+    upgrade::{is_upgrade_request, origin_allowed, upgrade},
     util_chain::{chain, Chain},
     util_map_err::MapErr,
     CONFIG, NEGATIVE, POSITIVE,
@@ -135,6 +135,15 @@ where
 
         debug!("sent non-websocket response to http client{}", POSITIVE);
         return non_ws_resp();
+    }
+
+    if let Some(scheme) = &CONFIG.server.websocket_origin_scheme {
+        if !origin_allowed(req.headers(), scheme) {
+            return Ok(Response::builder()
+                .status(StatusCode::FORBIDDEN)
+                .header(hyper::header::CACHE_CONTROL, "no-store")
+                .body(Body::new(negative_message!("connection not allowed").into()))?);
+        }
     }
 
     trace!("received websocket request");

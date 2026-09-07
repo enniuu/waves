@@ -1,11 +1,11 @@
 [server]
-bind = ["tcp", "0.0.0.0:4001"]
+bind = ["tcp", "127.0.0.1:4001"]
 transport = "websocket"
 resolve_ipv6 = false
 tcp_nodelay = true
 file_raw_mode = false
 use_real_ip_headers = true
-non_ws_response = "hii! you should join discord.gg/4GeWaGPh6c :3!!"
+non_ws_response = "hii you should join discord.gg/4GeWaGPh6c :3!!"
 log_level = "WARN"
 runtime = "threadpercore"
 

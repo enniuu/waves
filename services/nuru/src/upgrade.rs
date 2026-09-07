@@ -5,6 +5,51 @@ use http_body_util::Empty;
 use hyper::{header::HeaderValue, upgrade::OnUpgrade, Request, Response};
 use sha1::{Digest, Sha1};
 
+pub fn origin_allowed(headers: &hyper::HeaderMap, scheme: &str) -> bool {
+    let (prefix, default_port) = match scheme {
+        "https" => ("https://", 443),
+        "http" => ("http://", 80),
+        _ => return false,
+    };
+    let single_header = |name| {
+        let mut values = headers.get_all(name).iter();
+        let value = values.next()?.to_str().ok()?;
+        if values.next().is_some() {
+            return None;
+        }
+        Some(value)
+    };
+    let Some(origin) =
+        single_header(hyper::header::ORIGIN).and_then(|origin| origin.strip_prefix(prefix))
+    else {
+        return false;
+    };
+    let Some(host) = single_header(hyper::header::HOST) else {
+        return false;
+    };
+    let authority = |value: &str| {
+        if value
+            .bytes()
+            .any(|b| b.is_ascii_whitespace() || b"@/?#,".contains(&b))
+        {
+            return None;
+        }
+        let authority = value.parse::<hyper::http::uri::Authority>().ok()?;
+        if authority.as_str().len() != authority.host().len() && authority.port_u16().is_none() {
+            return None;
+        }
+        Some(authority)
+    };
+    match (authority(origin), authority(host)) {
+        (Some(origin), Some(host)) => {
+            origin.host().eq_ignore_ascii_case(host.host())
+                && origin.port_u16().unwrap_or(default_port)
+                    == host.port_u16().unwrap_or(default_port)
+        }
+        _ => false,
+    }
+}
+
 pub fn is_upgrade_request<B>(request: &hyper::Request<B>) -> bool {
     header_contains_value(request.headers(), hyper::header::CONNECTION, "Upgrade")
         && header_contains_value(request.headers(), hyper::header::UPGRADE, "websocket")

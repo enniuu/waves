@@ -6,7 +6,7 @@ import { resolve } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
-const buildId = createSourceBuildId(__dirname);
+const buildId = createSourceBuildId(__dirname, process.env.LYRA_WISP_PATH || "");
 const assetPath = `assets/${buildId}/[hash:12]`;
 
 export default defineConfig({

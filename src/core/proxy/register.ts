@@ -5,7 +5,7 @@ import {
   NEGATIVE,
   POSITIVE,
 } from "../runtime/messages";
-import { runtimeAssetPath } from "../runtime/build.ts";
+import { runtimeAssetPath, wispPath } from "../runtime/build.ts";
 
 type ConnectionState =
   | "IDLE"
@@ -297,7 +297,7 @@ class LyraConnectionManager {
       const wispHost = (isLocalDev && window.location.port === '4444')
         ? `${window.location.hostname}:4001`
         : window.location.host;
-      this.currentWispUrl = `${protocol}://${wispHost}/w/`;
+      this.currentWispUrl = `${protocol}://${wispHost}${wispPath}`;
 
       await this.ensureWispServerConnection(this.currentWispUrl, 10000);
 

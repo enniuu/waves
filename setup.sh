@@ -1109,7 +1109,8 @@ for ((i = 0; i < MOCHI_INSTANCES; i++)); do
   printf 'MOCHI_PORT=%s\n' "$((4100 + i))" | sudo tee "/etc/mochi/instance-$i.env" >/dev/null
 done
 
-"$BUN_BIN" --bun run build
+LYRA_WISP_PATH="/$("$BUN_BIN" -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))')/"
+LYRA_WISP_PATH="$LYRA_WISP_PATH" "$BUN_BIN" --bun run build
 
 sudo mkdir -p /etc/nuru /etc/systemd/system/caddy.service.d
 
@@ -1240,7 +1241,7 @@ http://127.0.0.1:4001 {
     }
 
     @nuru_routes {
-        path /w/*
+        path $LYRA_WISP_PATH*
     }
     reverse_proxy @nuru_routes $NURU_UPSTREAMS {
         lb_policy least_conn
@@ -1249,7 +1250,7 @@ http://127.0.0.1:4001 {
         health_interval 10s
         fail_duration 10s
         max_fails 4
-        header_up Host {upstream_hostport}
+        header_up Host {http.request.hostport}
         header_up X-Real-IP {remote_host}
         flush_interval -1
         transport http {
@@ -1366,7 +1367,11 @@ if [ "$WG_ENABLED" -eq 1 ] && [ -f /etc/wireguard/wg0.conf ]; then
     success "nuru dns updated to use vpn dns: $DNS_TOML"
   fi
 fi
-sudo cp "$ROOT/services/nuru/config.toml" /etc/nuru/config.toml
+sed -e '/^[[:space:]]*websocket_origin_scheme[[:space:]]*=/d' \
+    -e '/^\[server\]$/a\
+websocket_origin_scheme = "https"' \
+    -e "s|^prefix = .*|prefix = \"${LYRA_WISP_PATH%/}\"|" \
+    "$ROOT/services/nuru/config.toml" | sudo tee /etc/nuru/config.toml >/dev/null
 for ((i = 0; i < NURU_INSTANCES; i++)); do
   sed "s|^bind = .*|bind = [\"tcp\", \"127.0.0.1:$((4200 + i))\"]|" \
     /etc/nuru/config.toml | sudo tee "/etc/nuru/config-$i.toml" >/dev/null

@@ -225,6 +225,7 @@ function containsAppCode(chunk, projectRoot) {
 
 export default function lyraPlugin(
   buildId = createSourceBuildId(process.cwd()),
+  wispPath = process.env.LYRA_WISP_PATH ?? "/w/",
 ) {
   let outputDirectory;
   let serviceWorkerSourceDirectory;
@@ -235,8 +236,12 @@ export default function lyraPlugin(
     enforce: "post",
 
     config(_config, { command }) {
+      if (command === "build" && !/^\/(?:w|[a-f0-9]{64})\/$/.test(wispPath)) {
+        throw new Error("invalid wisp endpoint... /ᐠ - ˕ -マ");
+      }
       return {
         define: {
+          __LYRA_WISP_PATH__: JSON.stringify(command === "build" ? wispPath : "/w/"),
           __LYRA_BUILD_ID__: JSON.stringify(command === "build" ? buildId : ""),
           __LYRA_RUNTIME_PATHS__: JSON.stringify(command === "build"
             ? Object.fromEntries(Object.entries(createRuntimePathMap(buildId)).map(([key, value]) => [key.slice(1), value]))
