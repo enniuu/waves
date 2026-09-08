@@ -1,4 +1,3 @@
-import { canonicalize } from "../runtime/utils.ts";
 import { readAdvancedToggle } from "../config/advancedSettings.ts";
 
 export interface HistoryState {
@@ -50,13 +49,12 @@ function readPersistedHistory(): PersistedHistory {
   }
 }
 
-function persistVisit(url: string, replace: boolean): void {
+function persistVisit(url: string): void {
   if (!readAdvancedToggle("saveHistory")) return;
   try {
     const history = readPersistedHistory();
     const entry = { url, visitedAt: Date.now() };
-    if (replace && history.entries.length > 0) history.entries.splice(-1, 1, entry);
-    else history.entries.push(entry);
+    history.entries.push(entry);
     history.entries = history.entries.slice(-MAX_PERSISTED_ENTRIES);
     localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
   } catch {
@@ -65,8 +63,9 @@ function persistVisit(url: string, replace: boolean): void {
 }
 
 export class HistoryManager {
-  #stack: string[] = [];
+  #stack: { url: string; key?: string }[] = [];
   #currentIndex: number = -1;
+  #pending: "push" | "replace" | null = null;
   #onUpdateCallback: (state: HistoryState) => void;
   static readonly #MAX_ENTRIES = 150;
 
@@ -82,39 +81,70 @@ export class HistoryManager {
     });
   }
 
-  push(url: string): void {
+  begin(mode: "push" | "replace" = "push"): void {
+    this.#pending = mode;
+  }
+
+  cancel(): void {
+    this.#pending = null;
+  }
+
+  // Entry keys distinguish visits even when their URLs are identical.
+  observe(url: string, type = "metadata", key?: string): void {
     if (!url || url === "about:blank") return;
-
-    const newCanonicalUrl = canonicalize(url);
-    const currentCanonicalUrl = canonicalize(
-      this.#stack[this.#currentIndex] ?? "",
-    );
-
-    if (currentCanonicalUrl === newCanonicalUrl) {
-      this.#stack[this.#currentIndex] = url;
-      this.#notify();
+    const pending = this.#pending;
+    this.#pending = null;
+    const index = key
+      ? this.#stack[this.#currentIndex]?.key === key
+        ? this.#currentIndex
+        : this.#stack.findIndex((entry) => entry.key === key)
+      : -1;
+    if (index !== -1) {
+      const changed = this.#currentIndex !== index || this.getCurrentUrl() !== url;
+      if (this.#stack[index]!.url !== url) persistVisit(url);
+      this.#currentIndex = index;
+      this.#stack[index]!.url = url;
+      if (changed) this.#notify();
       return;
     }
+    if (pending === "replace" || type === "replace" || type === "reload" || type === "history-replace") {
+      this.replace(url, key);
+    } else if (!key && (type === "popstate" || type === "traverse")) {
+      const target = this.#stack.findLastIndex((entry) => entry.url === url);
+      if (target !== -1) {
+        this.#currentIndex = target;
+        this.#notify();
+      } else this.replace(url);
+    } else if (key || type === "push" || type === "history-push" || this.getCurrentUrl() !== url) {
+      this.push(url, key);
+    }
+  }
+
+  push(url: string, key?: string): void {
+    if (!url || url === "about:blank") return;
 
     if (this.#currentIndex < this.#stack.length - 1) {
       this.#stack.length = this.#currentIndex + 1;
     }
-    this.#stack.push(url);
+    this.#stack.push({ url, ...(key ? { key } : {}) });
     this.#currentIndex++;
     if (this.#stack.length > HistoryManager.#MAX_ENTRIES) {
       const overflow = this.#stack.length - HistoryManager.#MAX_ENTRIES;
       this.#stack.splice(0, overflow);
       this.#currentIndex = Math.max(0, this.#currentIndex - overflow);
     }
-    persistVisit(url, false);
+    persistVisit(url);
     this.#notify();
   }
 
-  replace(url: string): void {
-    if (!url || url === "about:blank" || this.#currentIndex < 0) return;
+  replace(url: string, key?: string): void {
+    if (!url || url === "about:blank") return;
+    if (this.#currentIndex < 0) return this.push(url, key);
+    const current = this.#stack[this.#currentIndex]!;
+    if (current.url === url && (!key || current.key === key)) return;
 
-    this.#stack[this.#currentIndex] = url;
-    persistVisit(url, true);
+    this.#stack[this.#currentIndex] = { url, ...(key ? { key } : {}) };
+    if (current.url !== url) persistVisit(url);
     this.#notify();
   }
 
@@ -137,7 +167,11 @@ export class HistoryManager {
   }
 
   getCurrentUrl(): string | null {
-    return this.#stack[this.#currentIndex] ?? null;
+    return this.#stack[this.#currentIndex]?.url ?? null;
+  }
+
+  getTarget(delta: -1 | 1): { url: string; key?: string } | null {
+    return this.#stack[this.#currentIndex + delta] ?? null;
   }
 
   canGoBack(): boolean {
@@ -151,6 +185,7 @@ export class HistoryManager {
   destroy(): void {
     this.#stack = [];
     this.#currentIndex = -1;
+    this.#pending = null;
     this.#onUpdateCallback = () => {};
   }
 }

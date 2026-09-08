@@ -1,13 +1,13 @@
 import { create } from "zustand";
 import { HistoryManager } from "../core/browser/history.ts";
 import { initializeIframe,
+  historyEntry,
   updateHistoryUI,
   cleanupIframe,
   clearExtensionPageForNavigation,
 } from "../core/browser/iframe.ts";
 import { handleSearch as performSearch } from "../features/search/search.ts";
 import {
-  canonicalize,
   getProxyUrl,
   encodeMochiUrl,
   normalizeGameHistoryUrl,
@@ -17,7 +17,6 @@ import {
   mountRivetNewTabOverride,
 } from "../core/proxy/rivetBridge.ts";
 import { getStoredGameSource } from "../core/config/settingsOptions.ts";
-import { NEGATIVE } from "../core/runtime/messages.ts";
 
 function proxyGameFavicon(icon: string): string {
   if (!icon || icon.startsWith("/")) return icon;
@@ -59,8 +58,6 @@ interface Tab {
   isUrlLoaded: boolean;
   isLoading: boolean;
   playerStatus: PlayerStatus;
-  scrollX: number;
-  scrollY: number;
   openerTabId: number | null;
   isGame?: boolean;
   fixedTitle?: boolean;
@@ -80,23 +77,21 @@ interface Tab {
     navigationType: string | null;
     updatedAt: number;
   };
-  _historyNavigating?: boolean;
-  _historyTarget?: string | null;
-  _historyNavigationClearTimer?: ReturnType<typeof setTimeout> | null;
-  _iframeLoadHandler: EventListener | null;
   _iframeFocusHandler: EventListener | null;
   _iframeElementFocusHandler: EventListener | null;
 }
 
 interface AddTabOptions {
   applyNewTabOverride?: boolean;
+  active?: boolean;
+  openerTabId?: number | null;
 }
 
 type TabPageState = NonNullable<Tab["pageState"]>;
 
 const clientTabMap = new Map<string, number>();
 const tabMemory = new Map<number, unknown>();
-const lastOpenTabRequest: { url: string | null; ts: number } = { url: null, ts: 0 };
+let lastTabId = 0;
 
 export const useStore = create<{
   tabs: Tab[];
@@ -198,32 +193,6 @@ const decodePageMetadata = (encoded: string) => {
   }
 };
 
-function clearHistoryNavigation(tab: Tab, incomingUrl: string | null) {
-  if (!tab || !tab._historyNavigating) return;
-  if (
-    !tab._historyTarget ||
-    !incomingUrl ||
-    canonicalize(tab._historyTarget) === canonicalize(incomingUrl)
-  ) {
-    if (tab._historyNavigationClearTimer) {
-      clearTimeout(tab._historyNavigationClearTimer);
-    }
-    tab._historyNavigationClearTimer = setTimeout(() => {
-      tab._historyNavigating = false;
-      tab._historyTarget = null;
-      tab._historyNavigationClearTimer = null;
-    }, 750);
-  }
-}
-
-function isExpectedHistoryNavigationUrl(tab: Tab, incomingUrl: string | null) {
-  return (
-    !tab._historyTarget ||
-    !incomingUrl ||
-    canonicalize(tab._historyTarget) === canonicalize(incomingUrl)
-  );
-}
-
 export const store = {
   tabs: [] as Tab[],
   activeTabId: null as number | null,
@@ -289,7 +258,7 @@ export const store = {
     options: AddTabOptions = {},
   ): Tab {
     const safeTitle = typeof title === "string" ? title : "new tab";
-    const newTabId = Date.now();
+    const newTabId = lastTabId = Math.max(Date.now(), lastTabId + 1);
     const { iframe, wrapper } = this.createIframe();
     iframe.dataset.tabId = String(newTabId);
     iframe.name = newTabId.toString();
@@ -297,15 +266,7 @@ export const store = {
     const historyManager = new HistoryManager({
       onUpdate: (history) => {
         const activeTab = this.getActiveTab();
-        if (
-          activeTab?.id === newTabId &&
-          !document.body.classList.contains("split-view")
-        ) {
-          updateHistoryUI(activeTab as never, history);
-        } else if (
-          activeTab?.id === this.splitPair.left &&
-          document.body.classList.contains("split-view")
-        ) {
+        if (activeTab?.id === newTabId) {
           updateHistoryUI(activeTab as never, history);
         }
       },
@@ -321,11 +282,8 @@ export const store = {
       isUrlLoaded: !!url,
       isLoading: false,
       playerStatus: "idle",
-      scrollX: 0,
-      scrollY: 0,
-      openerTabId: null,
+      openerTabId: options.openerTabId ?? null,
       isGame,
-      _iframeLoadHandler: null,
       _iframeFocusHandler: null,
       _iframeElementFocusHandler: null,
     };
@@ -339,36 +297,6 @@ export const store = {
       }
       rememberTabGameLabel(newTab, url, safeTitle);
     }
-
-    const iframeLoadHandler = () => {
-      try {
-        const doc = newTab.iframe.contentDocument;
-        if (doc) {
-          if (!newTab.fixedTitle) {
-            const newTitle = doc.title;
-            if (newTitle && newTitle.trim() !== "") {
-              newTab.title = newTitle;
-            } else {
-              newTab.title =
-                newTab.iframe.contentWindow!.location.hostname || "untitled";
-            }
-          }
-          if (!newTab.fixedFavicon) {
-            const faviconLink = doc.querySelector<HTMLLinkElement>(
-              'link[rel="icon"], link[rel="shortcut icon"]',
-            );
-            newTab.favicon = faviconLink ? faviconLink.href : null;
-          }
-          this.notify();
-        }
-      } catch (e) {
-        console.warn(
-          "could not access iframe content to update tab title:",
-          e,
-          NEGATIVE,
-        );
-      }
-    };
 
     const iframeFocusHandler = (e: CustomEvent) => {
       const clickedTabId = (e.detail as { tabId: number }).tabId;
@@ -409,17 +337,23 @@ export const store = {
       iframe.dispatchEvent(focusEvent);
     };
 
-    newTab._iframeLoadHandler = iframeLoadHandler;
     newTab._iframeFocusHandler = iframeFocusHandler as EventListener;
     newTab._iframeElementFocusHandler = iframeElementFocusHandler;
 
-    iframe.addEventListener("load", iframeLoadHandler);
     iframe.addEventListener("iframe-focus", iframeFocusHandler as EventListener);
     iframe.addEventListener("focus", iframeElementFocusHandler);
     iframe.addEventListener("pointerdown", iframeElementFocusHandler);
     iframe.addEventListener("mouseenter", iframeElementFocusHandler);
 
-    this.tabs.push(newTab);
+    const openerIndex = this.tabs.findIndex((tab) => tab.id === newTab.openerTabId);
+    let insertIndex = this.tabs.length;
+    if (openerIndex !== -1) {
+      insertIndex = openerIndex + 1;
+      if (options.active === false) {
+        while (this.tabs[insertIndex]?.openerTabId === newTab.openerTabId) insertIndex++;
+      }
+    } else newTab.openerTabId = null;
+    this.tabs.splice(insertIndex, 0, newTab);
     initializeIframe(iframe, historyManager, newTab.id);
 
     if (!url && options.applyNewTabOverride !== false) {
@@ -430,12 +364,14 @@ export const store = {
       performSearch(url, newTab as never, isGame ? title : undefined);
     }
 
-    this.switchTab(newTabId);
     getRivet()?.notifyTabCreated(newTabId);
+    if (options.active !== false || this.activeTabId === null) this.switchTab(newTabId);
+    else this.notify();
     return newTab;
   },
 
   switchTab(tabId: number) {
+    if (!this.tabs.some((tab) => tab.id === tabId)) return;
     const previousActiveId = this.activeTabId;
 
     if (!this.isPickingSplitTab && previousActiveId === tabId) return;
@@ -447,14 +383,6 @@ export const store = {
       this.activeTabId = this.splitPair.left;
     } else {
       this.activeTabId = tabId;
-    }
-
-    const oldActiveTab = this.tabs.find((t) => t.id === previousActiveId);
-    if (oldActiveTab && oldActiveTab.iframe.contentWindow) {
-      try {
-        oldActiveTab.scrollX = oldActiveTab.iframe.contentWindow.scrollX;
-        oldActiveTab.scrollY = oldActiveTab.iframe.contentWindow.scrollY;
-      } catch (e) {}
     }
 
     const activeTab = this.getActiveTab();
@@ -471,42 +399,23 @@ export const store = {
         document.body.classList.remove("browser-view");
       }
 
-      if (activeTab.iframe.contentWindow) {
-        requestAnimationFrame(() => {
-          try {
-            activeTab.iframe.contentWindow!.scrollTo(
-              activeTab.scrollX,
-              activeTab.scrollY,
-            );
-          } catch (e) {}
-        });
-      }
     } else {
       document.body.classList.remove("browser-view");
     }
 
     this.updateIframeView();
-    getRivet()?.notifyTabActivated(tabId);
+    if (this.activeTabId !== previousActiveId && this.activeTabId !== null) {
+      getRivet()?.notifyTabActivated(this.activeTabId);
+    }
   },
 
   closeTab(tabId: number) {
-    if (this.tabs.length <= 1) return;
     const tabIndex = this.tabs.findIndex((tab) => tab.id === tabId);
     if (tabIndex === -1) return;
 
     const closedTab = this.tabs.splice(tabIndex, 1)[0]!;
-    if (closedTab._historyNavigationClearTimer) {
-      clearTimeout(closedTab._historyNavigationClearTimer);
-      closedTab._historyNavigationClearTimer = null;
-    }
-    closedTab._historyNavigating = false;
-    closedTab._historyTarget = null;
 
     if (closedTab.iframe) {
-      closedTab.iframe.removeEventListener(
-        "load",
-        closedTab._iframeLoadHandler!,
-      );
       closedTab.iframe.removeEventListener(
         "iframe-focus",
         closedTab._iframeFocusHandler!,
@@ -525,7 +434,6 @@ export const store = {
       );
       cleanupIframe(closedTab.iframe);
       closedTab.wrapper.remove();
-      closedTab._iframeLoadHandler = null;
       closedTab._iframeFocusHandler = null;
       closedTab._iframeElementFocusHandler = null;
       (closedTab as any).iframe = null;
@@ -536,6 +444,9 @@ export const store = {
       (closedTab as any).historyManager = null;
     }
     tabMemory.delete(tabId);
+    for (const [clientId, id] of clientTabMap) {
+      if (id === tabId) clientTabMap.delete(clientId);
+    }
 
     const wasInSplitPair =
       tabId === this.splitPair.left || tabId === this.splitPair.right;
@@ -547,8 +458,16 @@ export const store = {
 
     const wasActive = this.activeTabId === tabId;
     const nextActiveTabId = wasActive
-      ? this.tabs[Math.max(0, tabIndex - 1)]?.id ?? null
+      ? this.tabs.find((tab) => tab.openerTabId === tabId)?.id
+        ?? (closedTab.openerTabId === null ? undefined :
+          this.tabs.find((tab, index) => index >= tabIndex && tab.openerTabId === closedTab.openerTabId)?.id
+          ?? this.tabs.findLast((tab, index) => index < tabIndex && tab.openerTabId === closedTab.openerTabId)?.id)
+        ?? this.tabs.find((tab) => tab.id === closedTab.openerTabId)?.id
+        ?? this.tabs[tabIndex]?.id ?? this.tabs[tabIndex - 1]?.id ?? null
       : null;
+    for (const tab of this.tabs) {
+      if (tab.openerTabId === tabId) tab.openerTabId = closedTab.openerTabId;
+    }
     if (wasActive) {
       this.activeTabId = null;
     }
@@ -701,7 +620,6 @@ export const store = {
     this.notify();
   },
 
-
   toggleSplitView() {
     const isSplitPairDefined =
       this.splitPair.left !== null && this.splitPair.right !== null;
@@ -727,14 +645,7 @@ export const store = {
     }
     const tabsCopy = [...this.tabs];
     for (const tab of tabsCopy) {
-      if (tab._historyNavigationClearTimer) {
-        clearTimeout(tab._historyNavigationClearTimer);
-        tab._historyNavigationClearTimer = null;
-      }
-      tab._historyNavigating = false;
-      tab._historyTarget = null;
       if (tab.iframe) {
-        tab.iframe.removeEventListener("load", tab._iframeLoadHandler!);
         tab.iframe.removeEventListener("iframe-focus", tab._iframeFocusHandler!);
         tab.iframe.removeEventListener("focus", tab._iframeElementFocusHandler!);
         tab.iframe.removeEventListener(
@@ -753,6 +664,7 @@ export const store = {
 
     this.tabs.length = 0;
     tabMemory.clear();
+    clientTabMap.clear();
     this.activeTabId = null;
     this.splitPair.left = null;
     this.splitPair.right = null;
@@ -779,26 +691,20 @@ export const store = {
     if (data && data.type === "open-new-tab") {
       const targetUrl = data.decodedUrl || data.url || null;
       if (!targetUrl) return;
-      const now = Date.now();
-      if (
-        lastOpenTabRequest.url === targetUrl &&
-        now - lastOpenTabRequest.ts < 750
-      )
-        return;
-      lastOpenTabRequest.url = targetUrl;
-      lastOpenTabRequest.ts = now;
-
-      const openerTabId = data.tabId ? parseInt(data.tabId as string, 10) : null;
+      const openerTabId = Number(data.tabId) || null;
+      if (openerTabId !== null && !this.tabs.some((tab) => tab.id === openerTabId)) return;
       const title = typeof data.title === "string" ? data.title : "fetching data...";
-      const tab = store.addTab(targetUrl, title);
-      if (tab && openerTabId) tab.openerTabId = openerTabId as number;
+      store.addTab(targetUrl, title, false, null, {
+        openerTabId,
+        active: data.active !== false,
+      });
       return;
     }
     if (data && data.type === "page-meta") {
       const isEncoded = !!data.encoded;
       const incomingUrl = isEncoded
-          ? decodePageMetadata(data.url)
-        : data.url || data.href || data.decodedUrl || null;
+          ? decodePageMetadata(data.decodedUrl || data.url)
+        : data.decodedUrl || data.url || data.href || null;
       const incomingDecodedUrl = isEncoded
           ? decodePageMetadata(data.decodedUrl)
         : data.decodedUrl || data.url || data.href || null;
@@ -851,38 +757,6 @@ export const store = {
         const mappedId = clientTabMap.get(data.clientId as string);
         targetTab = tabs.find((tab) => tab.id === mappedId) || null;
       }
-      if (!targetTab && data.isTopFrame && incomingDecodedUrl) {
-        const match = tabs.find(
-          (tab) => tab.historyManager?.getCurrentUrl?.() === incomingDecodedUrl,
-        );
-        if (match) {
-          targetTab = match;
-          if (data.clientId) clientTabMap.set(data.clientId as string, match.id);
-        }
-      }
-      if (!targetTab && data.isTopFrame && incomingDecodedUrl) {
-        try {
-          const incomingHost = new URL(incomingDecodedUrl).host;
-          const hostMatch = tabs.find((tab) => {
-            const current = tab.historyManager?.getCurrentUrl?.();
-            if (!current) return false;
-            try {
-              return new URL(current).host === incomingHost;
-            } catch (e) {
-              return false;
-            }
-          });
-          if (hostMatch) {
-            targetTab = hostMatch;
-            if (data.clientId) clientTabMap.set(data.clientId as string, hostMatch.id);
-          }
-        } catch (e) {}
-      }
-      if (!targetTab && data.isTopFrame && tabs.length === 1) {
-        targetTab = tabs[0]!;
-        if (data.clientId) clientTabMap.set(data.clientId as string, targetTab.id);
-      }
-
       if (!targetTab) return;
       if (
         targetTab.extensionPage &&
@@ -891,28 +765,11 @@ export const store = {
       ) {
         clearExtensionPageForNavigation(targetTab.iframe, targetTab);
       }
-      if (
-        incomingUrl &&
-        targetTab._historyNavigating &&
-        !isExpectedHistoryNavigationUrl(targetTab, incomingUrl)
-      ) {
-        return;
-      }
-
-      if (incomingUrl && targetTab.historyManager) {
-        const currentUrl = targetTab.historyManager.getCurrentUrl();
-        if (targetTab._historyNavigating) {
-          if (isExpectedHistoryNavigationUrl(targetTab, incomingUrl)) {
-            targetTab.historyManager.replace(incomingUrl);
-            clearHistoryNavigation(targetTab, incomingUrl);
-          }
-        } else if (!currentUrl) {
-          targetTab.historyManager.push(incomingUrl);
-        } else if (currentUrl !== incomingUrl) {
-          targetTab.historyManager.push(incomingUrl);
-        } else {
-          targetTab.historyManager.replace(incomingUrl);
-        }
+      if (data.isTopFrame === false) return;
+      if (data.navigationVersion !== undefined &&
+          data.navigationVersion !== targetTab.iframe.dataset.navigationVersion) return;
+      if (incomingUrl && targetTab.historyManager && (data.source === "folio" || !historyEntry(targetTab.iframe))) {
+        targetTab.historyManager.observe(incomingUrl, incomingNavigationType ?? "metadata", data.historyKey);
       }
       if (incomingUrl && !targetTab.isUrlLoaded) {
         targetTab.isUrlLoaded = true;
@@ -968,21 +825,13 @@ export const store = {
       return;
     }
     if (data && data.type === "url-update" && data.url) {
-      const activeTab = store.getActiveTab();
-      if (activeTab && activeTab.historyManager) {
-        if (activeTab._historyNavigating) {
-          if (isExpectedHistoryNavigationUrl(activeTab, data.url)) {
-            activeTab.historyManager.replace(data.url);
-            clearHistoryNavigation(activeTab, data.url);
-          }
-        } else {
-          activeTab.historyManager.push(data.url);
-        }
-        if (!activeTab.isUrlLoaded) {
-          activeTab.isUrlLoaded = true;
-          document.body.classList.add("browser-view");
-        }
-      }
+      const target = this.tabs.find((tab) =>
+        event.source === tab.iframe.contentWindow ||
+        (data.tabId && tab.id === Number(data.tabId)),
+      );
+      if (target) this.handleServiceWorkerMessage({
+        data: { ...data, type: "page-meta", tabId: target.id }, source: event.source,
+      } as MessageEvent);
     }
   },
 

@@ -2,7 +2,8 @@ import { useCallback } from "preact/hooks";
 import { store, useStore } from "../../state/store.ts";
 import {
   getBestKnownUrl,
-  navigateIframeTo,
+  reloadIframe,
+  navigateHistory,
   stopIframeLoading,
 } from "../../core/browser/iframe.ts";
 import { useSearchInputBindings } from "../../features/search/search.ts";
@@ -155,72 +156,20 @@ export default function NavBar() {
   const handleBack = useCallback(() => {
     const activeTab = store.getActiveTab();
     if (!activeTab) return;
-    const urlToGo = activeTab.historyManager.back();
-    if (urlToGo) {
-      if (activeTab._historyNavigationClearTimer) {
-        clearTimeout(activeTab._historyNavigationClearTimer);
-        activeTab._historyNavigationClearTimer = null;
-      }
-      activeTab._historyNavigating = true;
-      activeTab._historyTarget = urlToGo;
-      navigateIframeTo(activeTab.iframe, urlToGo);
-    }
+    navigateHistory(activeTab.iframe, -1);
   }, []);
 
   const handleForward = useCallback(() => {
     const activeTab = store.getActiveTab();
     if (!activeTab) return;
-    const urlToGo = activeTab.historyManager.forward();
-    if (urlToGo) {
-      if (activeTab._historyNavigationClearTimer) {
-        clearTimeout(activeTab._historyNavigationClearTimer);
-        activeTab._historyNavigationClearTimer = null;
-      }
-      activeTab._historyNavigating = true;
-      activeTab._historyTarget = urlToGo;
-      navigateIframeTo(activeTab.iframe, urlToGo);
-    }
+    navigateHistory(activeTab.iframe, 1);
   }, []);
 
-  const handleRefresh = useCallback(async () => {
+  const handleRefresh = useCallback(() => {
     const activeTab = store.getActiveTab();
     if (!activeTab) return;
-    if (activeTab.isLoading) {
-      stopIframeLoading(activeTab.iframe);
-    } else {
-      if (activeTab.extensionPage) {
-        store.showLoading(activeTab.id);
-        activeTab.iframe.parentElement?.classList.remove("loaded");
-        try {
-          activeTab.iframe.contentWindow?.location.reload();
-        } catch (e) {
-          store.hideLoading(activeTab.id);
-        }
-        return;
-      }
-
-      const currentUrl = getBestKnownUrl(activeTab.iframe, activeTab);
-      if (currentUrl) {
-        if ((window as any).Lyra?.handleSearch)
-          await (window as any).Lyra.handleSearch(currentUrl);
-      } else if (
-        activeTab.iframe.contentWindow &&
-        activeTab.iframe.src &&
-        activeTab.iframe.src !== "about:blank"
-      ) {
-        store.showLoading(activeTab.id);
-        activeTab.iframe.parentElement?.classList.remove("loaded");
-        delete activeTab.pageState;
-        if (!activeTab.fixedTitle) activeTab.title = "fetching data...";
-        if (!activeTab.fixedFavicon) activeTab.favicon = null;
-        store.notify();
-        try {
-          activeTab.iframe.contentWindow.location.reload();
-        } catch (e) {
-          navigateIframeTo(activeTab.iframe, activeTab.iframe.src);
-        }
-      }
-    }
+    if (activeTab.isLoading) stopIframeLoading(activeTab.iframe);
+    else reloadIframe(activeTab.iframe);
   }, []);
 
   const handleFullscreen = useCallback(() => {
@@ -282,6 +231,9 @@ export default function NavBar() {
         </a>
         <a
           id="backIcon"
+          class="disabled"
+          aria-disabled="true"
+          tabIndex={-1}
           href="#"
           onClick={(e) => {
             e.preventDefault();
@@ -292,6 +244,9 @@ export default function NavBar() {
         </a>
         <a
           id="forwardIcon"
+          class="disabled"
+          aria-disabled="true"
+          tabIndex={-1}
           href="#"
           onClick={(e) => {
             e.preventDefault();

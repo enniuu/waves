@@ -48,7 +48,6 @@ const Tab = memo(function Tab({
   isActive,
   isSplitPair,
   splitSide,
-  showClose,
 }: {
   id: number;
   title: string;
@@ -57,7 +56,6 @@ const Tab = memo(function Tab({
   isActive: boolean;
   isSplitPair: boolean;
   splitSide: string | null;
-  showClose: boolean;
 }) {
   const classes = ["tab"];
   if (isActive) classes.push("active");
@@ -90,6 +88,12 @@ const Tab = memo(function Tab({
       class={classes.join(" ")}
       data-tab-id={id}
       onClick={onTabClick}
+      onAuxClick={(event) => {
+        if (event.button === 1) {
+          event.preventDefault();
+          store.closeTab(id);
+        }
+      }}
     >
       <TabIcon favicon={favicon} eager={isActive} />
       <span class="tab-title">
@@ -99,7 +103,7 @@ const Tab = memo(function Tab({
       </span>
       <button
         class="tab-close"
-        style={{ display: showClose ? "" : "none" }}
+        aria-label="close tab"
         onClick={onCloseClick}
       >
         <IconCrossMedium />
@@ -119,7 +123,6 @@ export default function Sidebar() {
     splitPair.left !== null && splitPair.right !== null;
   const isSplitLayout = isSplitPairDefined &&
     (activeTabId === splitPair.left || activeTabId === splitPair.right);
-  const showClose = tabs.length > 1;
   const playerStatus = activeTab?.playerStatus || "idle";
   const pageLoading = activeTab?.isLoading === true;
   const footerStatus = getSidebarFooterStatus(playerStatus, pageLoading);
@@ -205,7 +208,6 @@ export default function Sidebar() {
               isActive={isActive}
               isSplitPair={isSplitPair}
               splitSide={splitSide}
-              showClose={showClose}
             />
           );
         })}

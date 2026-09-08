@@ -1,7 +1,6 @@
-import { showLoading, hideLoading } from "../../state/store.ts";
+import { store, showLoading, hideLoading } from "../../state/store.ts";
 import {
   decodeUrl,
-  canonicalize,
   getProxyUrl,
   normalizeGameHistoryUrl,
 } from "../runtime/utils";
@@ -16,6 +15,7 @@ import { ensureProxyRuntime } from "../proxy/proxyRuntime.ts";
 import { getRivet } from "../proxy/rivetBridge.ts";
 import { hostFromUrl, recordGameMetric } from "../media/gameDiagnostics.ts";
 import { NEGATIVE } from "../runtime/messages.ts";
+import type { HistoryManager } from "./history.ts";
 
 interface LyraTab {
   id: number;
@@ -42,18 +42,7 @@ interface LyraTab {
     navigationType: string | null;
     updatedAt: number;
   };
-  historyManager?: {
-    getCurrentUrl(): string | null;
-    canGoBack(): boolean;
-    canGoForward(): boolean;
-    push(url: string): void;
-    replace(url: string): void;
-    back(): string | null;
-    forward(): string | null;
-  };
-  _historyNavigating?: boolean;
-  _historyTarget?: string | null;
-  _historyNavigationClearTimer?: ReturnType<typeof setTimeout> | null;
+  historyManager?: HistoryManager;
   [key: string]: unknown;
 }
 
@@ -211,9 +200,9 @@ export function getBestKnownUrl(
   tab?: UrlTrackedTab | null,
 ): string | null {
   if (tab?.extensionPage?.url) return tab.extensionPage.url;
+  if (tab?.historyManager?.getCurrentUrl?.()) return tab.historyManager.getCurrentUrl();
   const trackedUrl = pageStateUrl(tab);
   if (trackedUrl) return trackedUrl;
-  if (tab?.historyManager?.getCurrentUrl?.()) return tab.historyManager.getCurrentUrl();
   if (iframe.dataset.manualUrl) return iframe.dataset.manualUrl;
   try {
     const frameUrl = iframe.contentWindow?.location?.href;
@@ -222,9 +211,59 @@ export function getBestKnownUrl(
   return iframe.src && iframe.src !== "about:blank" ? iframe.src : null;
 }
 
-function isExpectedHistoryNavigationUrl(tab: LyraTab, url: string): boolean {
-  if (!tab._historyTarget) return true;
-  return canonicalize(tab._historyTarget) === canonicalize(url);
+function navigationUrl(url: string): string {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    if (parsed.origin === window.location.origin &&
+        (parsed.pathname === "/f" || parsed.pathname.startsWith("/!!/"))) return decodeUrl(url);
+  } catch {}
+  return url;
+}
+
+export function historyEntry(iframe: HTMLIFrameElement) {
+  try {
+    return iframe.contentWindow?.navigation?.currentEntry ?? null;
+  } catch { return null; }
+}
+
+export function navigateHistory(iframe: HTMLIFrameElement, delta: -1 | 1): void {
+  const tab = window.Lyra.tabs?.find((candidate) => candidate.iframe === iframe);
+  const history = tab?.historyManager;
+  const target = history?.getTarget(delta);
+  if (!history || !target) return;
+  try {
+    const navigation = iframe.contentWindow?.navigation;
+    if (target.key && navigation?.entries().some((entry) => entry.key === target.key)) {
+      clearGameLoadState(iframe, true);
+      // Traverse this frame's entry, never the host's joint session history.
+      const result = navigation.traverseTo(target.key);
+      void result.committed?.catch(() => {});
+      void result.finished?.catch(() => {});
+      return;
+    }
+  } catch {}
+  if (delta === -1) history.back();
+  else history.forward();
+  navigateIframeTo(iframe, target.url, "replace");
+}
+
+export function reloadIframe(iframe: HTMLIFrameElement): void {
+  const tab = window.Lyra.tabs?.find((candidate) => candidate.iframe === iframe);
+  const url = getBestKnownUrl(iframe, tab);
+  if (!tab?.historyManager || !url) return;
+  const version = beginNavigation(iframe);
+  iframe.dataset.navigationVersion = String(version);
+  tab.historyManager.begin("replace");
+  installIframeLoadHandlers(iframe, tab.historyManager, tab.id, version);
+  clearGameLoadState(iframe, true);
+  armGameLoadTimeout(iframe, version, tab.id);
+  showLoading(tab.id);
+  iframe.parentElement?.classList.remove("loaded");
+  try {
+    iframe.contentWindow!.location.reload();
+  } catch {
+    navigateIframeTo(iframe, url, "replace");
+  }
 }
 
 function applyPageStateToTab(tab: LyraTab): boolean {
@@ -311,6 +350,10 @@ function detachContentWindowListeners(iframe: HTMLIFrameElement): void {
       | (Window & Record<string, unknown>)
       | null;
     if (!iframeWindow) return;
+    if (typeof iframeWindow.__lyraHistoryCleanup === "function") {
+      iframeWindow.__lyraHistoryCleanup();
+      delete iframeWindow.__lyraHistoryCleanup;
+    }
     if (iframeWindow.__beforeUnloadHandler) {
       iframeWindow.removeEventListener(
         "beforeunload",
@@ -340,8 +383,12 @@ function detachContentWindowListeners(iframe: HTMLIFrameElement): void {
 
 export function stopIframeLoading(iframe: HTMLIFrameElement): void {
   if (!iframe) return;
-  beginNavigation(iframe);
+  const version = beginNavigation(iframe);
   const tabId = getTabIdFromIframe(iframe);
+  const currentTab = window.Lyra.tabs?.find((tab) => tab.id === tabId);
+  if (currentTab?.historyManager) {
+    installIframeLoadHandlers(iframe, currentTab.historyManager, tabId, version);
+  }
   const iframeExt = iframe as HTMLIFrameElement & Record<string, unknown>;
 
   clearGameLoadState(iframe, true);
@@ -363,17 +410,10 @@ export function stopIframeLoading(iframe: HTMLIFrameElement): void {
   iframe.parentElement?.classList.add("loaded");
 
   const tab = window.Lyra?.tabs?.find((tab) => tab.iframe === iframe);
+  tab?.historyManager?.cancel();
   const currentUrl = getBestKnownUrl(iframe, tab);
 
   if (tab && currentUrl && currentUrl !== "about:blank") {
-    if (tab.historyManager) {
-      const hasExistingEntry = !!tab.historyManager.getCurrentUrl();
-      if (hasExistingEntry) {
-        tab.historyManager.replace(currentUrl);
-      } else {
-        tab.historyManager.push(currentUrl);
-      }
-    }
     updateHistoryUI(tab, {
       currentUrl: tab.historyManager?.getCurrentUrl?.() ?? currentUrl,
       canGoBack: tab.historyManager?.canGoBack?.() ?? false,
@@ -382,12 +422,14 @@ export function stopIframeLoading(iframe: HTMLIFrameElement): void {
   }
 }
 
-export function navigateIframeTo(iframe: HTMLIFrameElement, url: string): void {
+export function navigateIframeTo(iframe: HTMLIFrameElement, url: string, mode: "push" | "replace" = "push"): void {
   if (!url || !iframe) return;
   const navigationVersion = beginNavigation(iframe);
   clearExtensionPageForNavigation(iframe);
   const iframeExt = iframe as HTMLIFrameElement & Record<string, unknown>;
   const tab = window.Lyra.tabs!.find((t) => t.iframe === iframe);
+  tab?.historyManager?.begin(mode);
+  iframe.dataset.navigationVersion = String(navigationVersion);
   const historyManager = iframeExt.__lyraHistoryManager as
     | IframeHistoryManager
     | undefined;
@@ -667,7 +709,20 @@ function setupIframeContentListeners(
     if (!iframeWindow || iframeWindow === window || (isBlank && !hasManualUrl))
       return;
 
-    const handleNav = (isReplace = false): void => {
+    detachContentWindowListeners(iframe);
+    const navigation = iframeWindow.navigation;
+    const hasPageStatePlugin = Boolean((iframeWindow as Window & { __lyraFolioPageStateInstalled?: boolean }).__lyraFolioPageStateInstalled);
+    if (navigation && !hasPageStatePlugin) {
+      const onEntryChange = (event: NavigationCurrentEntryChangeEvent) => {
+        const url = navigationUrl(iframeWindow.location.href);
+        historyManager.observe(url, event.navigationType ?? "metadata", navigation.currentEntry?.key);
+      };
+      navigation.addEventListener("currententrychange", onEntryChange);
+      (iframeWindow as Window & Record<string, unknown>).__lyraHistoryCleanup = () =>
+        navigation.removeEventListener("currententrychange", onEntryChange);
+    }
+
+    const handleNav = (type = "history-push"): void => {
       const newUrlInIframe = iframeWindow.location.href;
       const baseManualUrl = iframe.dataset.manualUrl;
       let finalUrlToPush = newUrlInIframe;
@@ -683,23 +738,11 @@ function setupIframeContentListeners(
         }
       }
       if (finalUrlToPush !== "about:blank") {
-        const currentHistoryUrl = historyManager.getCurrentUrl?.();
-        const tab = window.Lyra.tabs?.find((tab) => tab.id === tabId);
-        if (tab?._historyNavigating) {
-          if (isExpectedHistoryNavigationUrl(tab, finalUrlToPush)) {
-            historyManager.replace(finalUrlToPush);
-          }
-        } else if (isReplace) {
-          historyManager.replace(finalUrlToPush);
-        } else if (!currentHistoryUrl || currentHistoryUrl !== finalUrlToPush) {
-          historyManager.push(finalUrlToPush);
-        } else {
-          historyManager.replace(finalUrlToPush);
-        }
+        historyManager.observe(navigationUrl(finalUrlToPush), type);
       }
     };
 
-    if (!(iframeWindow.history.pushState as any).__isPatched) {
+    if (!navigation && !hasPageStatePlugin && !(iframeWindow.history.pushState as any).__isPatched) {
       const originalPushState = iframeWindow.history.pushState;
       (iframeWindow as any).history.pushState = function (
         ...args: Parameters<typeof History.prototype.pushState>
@@ -709,15 +752,26 @@ function setupIframeContentListeners(
       };
       (iframeWindow.history.pushState as any).__isPatched = true;
     }
-    if (!(iframeWindow.history.replaceState as any).__isPatched) {
+    if (!navigation && !hasPageStatePlugin && !(iframeWindow.history.replaceState as any).__isPatched) {
       const originalReplaceState = iframeWindow.history.replaceState;
       (iframeWindow as any).history.replaceState = function (
         ...args: Parameters<typeof History.prototype.replaceState>
       ) {
         originalReplaceState.apply(this, args);
-        handleNav(true);
+        handleNav("history-replace");
       };
       (iframeWindow.history.replaceState as any).__isPatched = true;
+    }
+
+    if (!navigation && !hasPageStatePlugin) {
+      const onPopState = () => handleNav("popstate");
+      const onHashChange = () => handleNav("hashchange");
+      iframeWindow.addEventListener("popstate", onPopState);
+      iframeWindow.addEventListener("hashchange", onHashChange);
+      (iframeWindow as Window & Record<string, unknown>).__lyraHistoryCleanup = () => {
+        iframeWindow.removeEventListener("popstate", onPopState);
+        iframeWindow.removeEventListener("hashchange", onHashChange);
+      };
     }
 
     const beforeUnloadHandler = () => {
@@ -741,12 +795,6 @@ function setupIframeContentListeners(
     iframeWindow.addEventListener("beforeunload", beforeUnloadHandler);
 
     const domLoadedHandler = () => {
-      try {
-        const currentUrl = iframeWindow.location.href;
-        if (currentUrl && currentUrl !== "about:blank")
-          historyManager.replace(currentUrl);
-      } catch (e) {}
-
       updateTabDetails(iframe);
     };
     (
@@ -772,18 +820,15 @@ function setupIframeContentListeners(
 let _searchInputNav: HTMLInputElement | null = null;
 let _backIcon: HTMLElement | null = null;
 let _forwardIcon: HTMLElement | null = null;
-let _navElCheckCount = 0;
 
 function getNavEls() {
-  _navElCheckCount++;
-  const needsRefresh = _navElCheckCount % 100 === 0;
-  if (!_searchInputNav || needsRefresh)
+  if (!_searchInputNav?.isConnected)
     _searchInputNav = document.getElementById(
       "searchInputt",
     ) as HTMLInputElement | null;
-  if (!_backIcon || needsRefresh)
+  if (!_backIcon?.isConnected)
     _backIcon = document.getElementById("backIcon");
-  if (!_forwardIcon || needsRefresh)
+  if (!_forwardIcon?.isConnected)
     _forwardIcon = document.getElementById("forwardIcon");
 }
 
@@ -791,6 +836,7 @@ export function updateHistoryUI(
   activeTab: LyraTab,
   { currentUrl, canGoBack, canGoForward }: HistoryUIState,
 ): void {
+  if (activeTab?.id !== store.activeTabId) return;
   getNavEls();
   const stillExists =
     activeTab && window.Lyra?.tabs?.some((tab) => tab.id === activeTab.id);
@@ -805,20 +851,22 @@ export function updateHistoryUI(
 
   const { iframe } = activeTab;
 
-  if (_backIcon && _forwardIcon) {
-    _backIcon.classList.toggle("disabled", !canGoBack);
-    _forwardIcon.classList.toggle("disabled", !canGoForward);
+  for (const [element, enabled] of [[_backIcon, canGoBack], [_forwardIcon, canGoForward]] as const) {
+    if (!element) continue;
+    element.classList.toggle("disabled", !enabled);
+    element.setAttribute("aria-disabled", String(!enabled));
+    element.tabIndex = enabled ? 0 : -1;
   }
 
   if (_searchInputNav) {
     const trackedPageUrl = pageStateUrl(activeTab);
     let displayUrl: string | null | undefined =
-      trackedPageUrl || activeTab.extensionPage?.url || currentUrl;
+      currentUrl ?? trackedPageUrl ?? activeTab.extensionPage?.url;
     if (displayUrl === undefined || displayUrl === null) {
       displayUrl = getBestKnownUrl(iframe, activeTab);
     }
 
-    const decoded = decodeUrl(displayUrl ?? "");
+    const decoded = navigationUrl(displayUrl ?? "");
     let displayText: string = decoded;
 
     if (activeTab.extensionPage && !trackedPageUrl) {
@@ -922,28 +970,19 @@ function installIframeLoadHandlers(
     if (tab?.isGame && tab.playerStatus === "error") {
       window.Lyra.setPlayerStatus?.(tab.id, "idle");
     }
-    const newUrl = getBestKnownUrl(iframe, tab) ?? undefined;
-
-    if (newUrl && newUrl !== "about:blank") {
-      if (tab?._historyNavigating) {
-        historyManager.replace(newUrl);
-        if (tab._historyNavigationClearTimer) {
-          clearTimeout(tab._historyNavigationClearTimer);
+    let newUrl: string | undefined;
+    try {
+      const win = iframe.contentWindow;
+      const nativeUrl = win?.location.href;
+      if (nativeUrl && nativeUrl !== "about:blank") {
+        newUrl = navigationUrl(nativeUrl);
+        // The proxy reports every commit in order; a load event must not race
+        // that stream and insert its final entry ahead of queued SPA entries.
+        if (!(win as Window & { __lyraFolioPageStateInstalled?: boolean }).__lyraFolioPageStateInstalled) {
+          historyManager.observe(newUrl, win?.navigation?.activation?.navigationType ?? "load", win?.navigation?.currentEntry?.key);
         }
-        tab._historyNavigationClearTimer = setTimeout(() => {
-          tab._historyNavigating = false;
-          tab._historyTarget = null;
-          tab._historyNavigationClearTimer = null;
-          updateHistoryUI(tab, {
-            currentUrl: historyManager.getCurrentUrl(),
-            canGoBack: historyManager.canGoBack(),
-            canGoForward: historyManager.canGoForward(),
-          });
-        }, 5000);
-      } else {
-        historyManager.push(newUrl);
       }
-    }
+    } catch {}
 
     updateTabDetails(iframe);
 

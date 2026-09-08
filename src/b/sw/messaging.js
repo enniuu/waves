@@ -46,6 +46,7 @@ self.addEventListener("message", (event) => {
       tabId: message.tabId || null,
       isTopFrame: !!message.isTopFrame,
       cause: message.cause || null,
+      active: message.active !== false,
     };
     event.waitUntil(
       (async () => {

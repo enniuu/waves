@@ -44,30 +44,25 @@ function baseTargetCreatesNewContext(document: Document): boolean {
 	);
 }
 
-/**
- * Intercepts links, forms, and window.open calls that would create a browser
- * popup/new tab and routes them through a host-provided callback instead.
- * Requires {@link EventHandlerPlugin} on the same frame.
- */
 export class LinkHandlerPlugin extends ManagedPlugin {
 	constructor(
-		private onNewTab: (url: string) => void,
+		private onNewTab: (url: string, active: boolean) => void,
 		private options: LinkHandlerPluginOptions = {}
 	) {
 		super("link-handler", []);
 	}
 
-	private open(url: string | URL, window: Window): boolean {
+	private open(url: string | URL, window: Window, active = true): boolean {
 		try {
-			this.onNewTab(new URL(String(url), window.location.href).href);
+			this.onNewTab(new URL(String(url), window.location.href).href, active);
 			return true;
 		} catch {
 			return false;
 		}
 	}
 
-	private consume(event: Event, url: string | URL, window: Window): void {
-		if (!this.open(url, window)) return;
+	private consume(event: Event, url: string | URL, window: Window, active = true): void {
+		if (!this.open(url, window, active)) return;
 
 		event.preventDefault();
 		event.stopPropagation();
@@ -112,7 +107,8 @@ export class LinkHandlerPlugin extends ManagedPlugin {
 					);
 					if (!anchor || !shouldOpenAnchorInNewTab(anchor, event)) return;
 
-					this.consume(event, anchor.href, window);
+					this.consume(event, anchor.href, window,
+						(event.button === 1 || event.ctrlKey || event.metaKey) ? event.shiftKey : true);
 				};
 
 				document.addEventListener("click", anchorClickHandler, true);

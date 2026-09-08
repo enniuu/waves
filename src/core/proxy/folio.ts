@@ -438,13 +438,13 @@ function createFolioHttpCachePlugin(): unknown {
 function createFolioLinkHandlerPlugins(iframe: HTMLIFrameElement): unknown[] {
   const folioUtils = (window as unknown as {
     $folioUtils?: {
-      LinkHandlerPlugin?: new (onNewTab: (url: string) => void) => unknown;
+      LinkHandlerPlugin?: new (onNewTab: (url: string, active: boolean) => void) => unknown;
     };
   }).$folioUtils;
   if (!folioUtils?.LinkHandlerPlugin) return [];
 
   return [
-    new folioUtils.LinkHandlerPlugin((url) => {
+    new folioUtils.LinkHandlerPlugin((url, active) => {
       window.postMessage(
         {
           type: "open-new-tab",
@@ -453,6 +453,7 @@ function createFolioLinkHandlerPlugins(iframe: HTMLIFrameElement): unknown[] {
           tabId: iframe.dataset.tabId ?? null,
           isTopFrame: true,
           cause: "folio-link-handler",
+          active,
         },
         "*",
       );
@@ -483,6 +484,7 @@ function createFolioPageStatePlugin(iframe: HTMLIFrameElement): unknown {
         win.__lyraFolioPageStateInstalled = true;
 
         const doc = win.document;
+        let navigationVersion = iframe.dataset.navigationVersion;
         let pendingTimer: number | null = null;
         let lastSignature = "";
 
@@ -539,9 +541,8 @@ function createFolioPageStatePlugin(iframe: HTMLIFrameElement): unknown {
         };
 
         const emit = (reason: string, urlOverride?: unknown) => {
-          if (pendingTimer !== null) return;
-          pendingTimer = win.setTimeout(() => {
-            pendingTimer = null;
+          const send = () => {
+            if (iframe.dataset.navigationVersion !== navigationVersion) return;
 
             const url = currentUrl(urlOverride);
             const favicon = readFavicon();
@@ -555,8 +556,9 @@ function createFolioPageStatePlugin(iframe: HTMLIFrameElement): unknown {
               historyLength,
               historyState,
               reason,
+              win.navigation?.currentEntry?.key,
             ]);
-            if (signature === lastSignature) return;
+            if (signature === lastSignature && reason !== "history-push") return;
             lastSignature = signature;
 
             const payload: Record<string, unknown> = {
@@ -573,7 +575,10 @@ function createFolioPageStatePlugin(iframe: HTMLIFrameElement): unknown {
               rawFavicon: favicon,
               historyLength,
               historyState,
-              navigationType: reason,
+              navigationType: reason === "init"
+                ? win.navigation?.activation?.navigationType ?? "load" : reason,
+              historyKey: win.navigation?.currentEntry?.key,
+              navigationVersion,
               history: {
                 length: historyLength,
                 state: historyState,
@@ -586,7 +591,12 @@ function createFolioPageStatePlugin(iframe: HTMLIFrameElement): unknown {
             try {
               win.parent?.postMessage(payload, "*");
             } catch {}
-          }, 0);
+          };
+          if (reason !== "metadata") {
+            send();
+          } else if (pendingTimer === null) {
+            pendingTimer = win.setTimeout(() => { pendingTimer = null; send(); }, 0);
+          }
         };
 
         const wrapHistory = (method: "pushState" | "replaceState") => {
@@ -604,8 +614,14 @@ function createFolioPageStatePlugin(iframe: HTMLIFrameElement): unknown {
           } catch {}
         };
 
-        wrapHistory("pushState");
-        wrapHistory("replaceState");
+        if (win.navigation) {
+          win.navigation.addEventListener("currententrychange", (event) => {
+            emit(event.navigationType ?? "metadata");
+          });
+        } else {
+          wrapHistory("pushState");
+          wrapHistory("replaceState");
+        }
 
         const observeHead = () => {
           const target = doc.head || doc.documentElement;
@@ -627,18 +643,12 @@ function createFolioPageStatePlugin(iframe: HTMLIFrameElement): unknown {
           once: true,
         });
         win.addEventListener("load", () => emit("load"), { capture: true });
-        win.addEventListener("pageshow", () => emit("pageshow"), { capture: true });
+        win.addEventListener("pageshow", (event) => {
+          if (event.persisted) navigationVersion = iframe.dataset.navigationVersion;
+          emit(event.persisted ? "traverse" : "pageshow");
+        }, { capture: true });
         win.addEventListener("popstate", () => emit("popstate"), { capture: true });
         win.addEventListener("hashchange", () => emit("hashchange"), { capture: true });
-        const navigateHook = context.client?.hooks?.lifecycle?.navigate;
-        if (navigateHook) {
-          this.tap(
-            navigateHook,
-            (navigationContext: { type?: string }, props: { url?: string }) => {
-              emit(navigationContext?.type || "navigate", props?.url);
-            },
-          );
-        }
 
         emit("init");
       });

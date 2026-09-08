@@ -118,7 +118,7 @@ export async function handleSearch(
   _gameName?: string,
 ): Promise<void> {
   if (!activeTab || !query.trim()) return;
-  showBrowserView();
+  if (activeTab.id === store.activeTabId) showBrowserView();
   activeTab.isUrlLoaded = true;
   delete activeTab.pageState;
   clearExtensionPageForNavigation(activeTab.iframe, activeTab);
