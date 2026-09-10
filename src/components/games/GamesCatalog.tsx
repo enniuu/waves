@@ -174,7 +174,7 @@ export default function GamesCatalog({
   }, [allGames, query]);
 
   const placeholder = loaded
-    ? "search games... ◝(ᵔᗜᵔ)◜"
+    ? `search for ${allGames.length} games... ◝(ᵔᗜᵔ)◜`
     : "fetching games...";
 
   return (
