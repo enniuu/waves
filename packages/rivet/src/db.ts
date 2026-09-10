@@ -56,6 +56,36 @@ export async function dbPut(store: string, key: IDBValidKey | null, value: unkno
   });
 }
 
+export async function dbGetEntries<T = unknown>(
+  store: string,
+  keys: readonly string[] | IDBKeyRange,
+): Promise<[string, T][]> {
+  if (Array.isArray(keys) && keys.length === 0) return [];
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, "readonly");
+    const objStore = tx.objectStore(store);
+    const entries: [string, T][] = [];
+    tx.onabort = tx.onerror = () => reject(databaseError());
+    if (Array.isArray(keys)) {
+      for (const key of keys) {
+        const request = objStore.openCursor(key);
+        request.onsuccess = () => {
+          if (request.result) entries.push([key, request.result.value as T]);
+        };
+      }
+      tx.oncomplete = () => resolve(entries);
+    } else {
+      const range = keys as IDBKeyRange;
+      const storedKeys = objStore.getAllKeys(range);
+      const values = objStore.getAll(range);
+      tx.oncomplete = () => resolve(
+        storedKeys.result.map((key, index) => [key as string, values.result[index] as T]),
+      );
+    }
+  });
+}
+
 export async function dbPutEntries(
   store: string,
   entries: readonly (readonly [key: IDBValidKey, value: unknown])[],

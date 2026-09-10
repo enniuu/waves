@@ -1,4 +1,4 @@
-import { dbDelete, dbGet, dbGetAllKeys, dbPut, EXT_STORAGE_STORE } from "../db";
+import { dbDelete, dbGetEntries, dbGetAllKeys, dbPutEntries, EXT_STORAGE_STORE } from "../db";
 import type { RivetRegistry } from "../registry";
 import { cloneForRealm } from "./common";
 import type { ChromeApiContext } from "./context";
@@ -8,29 +8,22 @@ async function storageGet(
   area: string,
   keys: unknown,
 ): Promise<Record<string, unknown>> {
-  const result: Record<string, unknown> = {};
-  const allKeys = await dbGetAllKeys(EXT_STORAGE_STORE);
   const prefix = `${extId}/${area}/`;
-  const relevant = allKeys.filter(
-    (key) => typeof key === "string" && key.startsWith(prefix),
-  ) as string[];
-  for (const key of relevant) {
-    const shortKey = key.slice(prefix.length);
-    let include = false;
-    if (keys === null || keys === undefined) include = true;
-    else if (typeof keys === "string") include = shortKey === keys;
-    else if (Array.isArray(keys)) include = keys.includes(shortKey);
-    else if (typeof keys === "object") include = shortKey in keys;
-    if (include) result[shortKey] = await dbGet(EXT_STORAGE_STORE, key);
-  }
-  if (typeof keys === "object" && keys !== null && !Array.isArray(keys)) {
-    for (const [key, value] of Object.entries(
-      keys as Record<string, unknown>,
-    )) {
-      if (!(key in result)) result[key] = value;
-    }
-  }
-  return result;
+  const requested = typeof keys === "string" ? [keys]
+    : Array.isArray(keys) ? keys.filter((key): key is string => typeof key === "string")
+    : keys && typeof keys === "object" ? Object.keys(keys) : [];
+  const entries = await dbGetEntries(
+    EXT_STORAGE_STORE,
+    keys === null || keys === undefined
+      ? IDBKeyRange.bound(prefix, `${extId}/${area}0`, false, true)
+      : [...new Set(requested)].map((key) => prefix + key),
+  );
+  const defaults = keys && typeof keys === "object" && !Array.isArray(keys)
+    ? Object.entries(keys) : [];
+  return Object.fromEntries([
+    ...defaults,
+    ...entries.map(([key, value]) => [key.slice(prefix.length), value]),
+  ]);
 }
 
 async function storageSet(
@@ -38,9 +31,10 @@ async function storageSet(
   area: string,
   items: Record<string, unknown>,
 ): Promise<void> {
-  for (const [key, value] of Object.entries(items)) {
-    await dbPut(EXT_STORAGE_STORE, `${extId}/${area}/${key}`, value);
-  }
+  await dbPutEntries(
+    EXT_STORAGE_STORE,
+    Object.entries(items).map(([key, value]) => [`${extId}/${area}/${key}`, value] as const),
+  );
 }
 
 async function storageRemove(
