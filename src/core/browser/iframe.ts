@@ -235,7 +235,6 @@ export function navigateHistory(iframe: HTMLIFrameElement, delta: -1 | 1): void 
     const navigation = iframe.contentWindow?.navigation;
     if (target.key && navigation?.entries().some((entry) => entry.key === target.key)) {
       clearGameLoadState(iframe, true);
-      // Traverse this frame's entry, never the host's joint session history.
       const result = navigation.traverseTo(target.key);
       void result.committed?.catch(() => {});
       void result.finished?.catch(() => {});
@@ -976,8 +975,6 @@ function installIframeLoadHandlers(
       const nativeUrl = win?.location.href;
       if (nativeUrl && nativeUrl !== "about:blank") {
         newUrl = navigationUrl(nativeUrl);
-        // The proxy reports every commit in order; a load event must not race
-        // that stream and insert its final entry ahead of queued SPA entries.
         if (!(win as Window & { __lyraFolioPageStateInstalled?: boolean }).__lyraFolioPageStateInstalled) {
           historyManager.observe(newUrl, win?.navigation?.activation?.navigationType ?? "load", win?.navigation?.currentEntry?.key);
         }

@@ -18,11 +18,6 @@ body.games-view .games-topbar {
   contain-intrinsic-size: 100px 105px;
 }
 
-.game-info h1 {
-  position: relative;
-  z-index: 2;
-}
-
 .game-info {
   position: absolute;
   inset: 0;

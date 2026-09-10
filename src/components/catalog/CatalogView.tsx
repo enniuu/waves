@@ -1,7 +1,7 @@
-import type { JSX } from "preact";
 import type { RefObject } from "preact";
+import { useRef } from "preact/hooks";
 import { IconMagnifyingGlass2 } from "../icons";
-import { useVirtualGrid } from "../../hooks/useVirtualGrid.ts";
+import CatalogCanvas, { type CanvasCard } from "./CatalogCanvas.tsx";
 
 interface CatalogViewProps<T> {
   id: string;
@@ -20,10 +20,10 @@ interface CatalogViewProps<T> {
   onQueryChange: (value: string) => void;
   gridVisible: boolean;
   showSkeleton: boolean;
-  skeletonKeys: readonly string[];
   items: readonly T[];
-  renderSkeleton: (key: string) => JSX.Element;
-  renderItem: (item: T) => JSX.Element;
+  getCard: (item: T) => CanvasCard;
+  onSelect: (item: T) => void;
+  anime?: boolean;
   emptyMessage?: string | null;
   statusMessage?: string | null;
 }
@@ -45,19 +45,16 @@ export default function CatalogView<T>({
   onQueryChange,
   gridVisible,
   showSkeleton,
-  skeletonKeys,
   items,
-  renderSkeleton,
-  renderItem,
+  getCard,
+  onSelect,
+  anime = false,
   emptyMessage,
   statusMessage,
 }: CatalogViewProps<T>) {
-  const { gridRef, range, visibleItems } = useVirtualGrid(
-    items,
-    visible && gridVisible && !showSkeleton,
-  );
-
-  if (!visible) return null;
+  const opened = useRef(false);
+  if (visible) opened.current = true;
+  if (!opened.current) return null;
 
   return (
     <section
@@ -87,29 +84,11 @@ export default function CatalogView<T>({
 
       <div class={gridContainerClassName}>
         <div
-          ref={gridRef}
           class={gridClassName}
-          style={gridVisible ? "display:grid" : "display:none"}
+          style={gridVisible || showSkeleton ? "display:block" : "display:none"}
         >
-          {showSkeleton
-            ? skeletonKeys.map(renderSkeleton)
-            : [
-                range.topSpacer > 0 ? (
-                  <div
-                    key="virtual-top"
-                    class="catalog-virtual-spacer"
-                    style={`height:${range.topSpacer}px`}
-                  />
-                ) : null,
-                ...visibleItems.map(renderItem),
-                range.bottomSpacer > 0 ? (
-                  <div
-                    key="virtual-bottom"
-                    class="catalog-virtual-spacer"
-                    style={`height:${range.bottomSpacer}px`}
-                  />
-                ) : null,
-              ]}
+          <CatalogCanvas items={items} getCard={getCard} onSelect={onSelect}
+            anime={anime} loading={showSkeleton} active={visible && active && (gridVisible || showSkeleton)} />
         </div>
         {emptyMessage && <p class="no-results">{emptyMessage}</p>}
         {statusMessage && <p class="no-results">{statusMessage}</p>}

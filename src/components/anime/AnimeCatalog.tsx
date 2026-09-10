@@ -32,11 +32,7 @@ import { svgIcon } from "../../core/ui/svgIcon.ts";
 import { app } from "../../core/runtime/app.ts";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.ts";
 import { useMenuView } from "../../hooks/useMenuView.ts";
-import AnimeCard from "./AnimeCard.tsx";
 import CatalogView from "../catalog/CatalogView.tsx";
-import CatalogSkeletonCard, {
-  CATALOG_SKELETON_KEYS,
-} from "../catalog/CatalogSkeletonCard.tsx";
 import EpisodePickerModal from "./EpisodePickerModal.tsx";
 import "../../assets/styles/catalog/catalog.css";
 import "../../assets/styles/anime/anime.css";
@@ -57,15 +53,9 @@ function needsAnimeFranchiseSearch(
 const SVG_SEARCH = svgIcon("IconMagnifyingGlass2");
 const SEARCH_DEBOUNCE_MS = 120;
 
-function renderAnimeSkeleton(key: string) {
-  return (
-    <CatalogSkeletonCard
-      key={key}
-      cardClassName="anime-card"
-      coverClassName="poster-cover"
-      infoClassName="anime-info"
-    />
-  );
+function animeCard(anime: AnimeEntry) {
+  return { title: anime.title, cover: anime.posterUrl, smallCover: anime.posterSmallUrl,
+    year: anime.year, rating: anime.rating, adult: anime.adult };
 }
 
 export default function AnimeCatalog({
@@ -495,16 +485,10 @@ export default function AnimeCatalog({
         onQueryChange={setQuery}
         gridVisible={filteredAnime.length > 0}
         showSkeleton={showSkeleton}
-        skeletonKeys={CATALOG_SKELETON_KEYS}
         items={filteredAnime}
-        renderSkeleton={renderAnimeSkeleton}
-        renderItem={(anime) => (
-          <AnimeCard
-            key={`${anime.animeType}-${anime.id}`}
-            anime={anime}
-            onPlay={handlePlay}
-          />
-        )}
+        getCard={animeCard}
+        onSelect={handlePlay}
+        anime
         emptyMessage={
           loaded && !searchPending && filteredAnime.length === 0
             ? error || negativeMessage("no anime matches were found")

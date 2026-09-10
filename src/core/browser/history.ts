@@ -89,7 +89,6 @@ export class HistoryManager {
     this.#pending = null;
   }
 
-  // Entry keys distinguish visits even when their URLs are identical.
   observe(url: string, type = "metadata", key?: string): void {
     if (!url || url === "about:blank") return;
     const pending = this.#pending;

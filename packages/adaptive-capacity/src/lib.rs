@@ -4,6 +4,9 @@ use std::time::Duration;
 use sysinfo::System;
 use tokio::sync::Notify;
 
+mod memory;
+pub use memory::memory_budget;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Workload {
     Cpu,
@@ -228,7 +231,8 @@ pub fn spawn_rebalancer(
         loop {
             ticker.tick().await;
             system.refresh_memory();
-            let available_memory = system.available_memory();
+            let (_, available_memory) =
+                memory_budget(system.total_memory(), system.available_memory());
             let normalized_load = System::load_average().one / cores.max(1) as f64;
             for target in &targets {
                 let snapshot = target.gate.snapshot();

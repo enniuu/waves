@@ -4,9 +4,9 @@ import { IconCloud, IconSettingsGear4 } from "../icons";
 import { svgIcon } from "../../core/ui/svgIcon";
 import { invokeWindowAction } from "../../core/browser/windowActions.ts";
 import {
-  loadAnimeCatalog,
+  preloadAnimeCatalog,
   loadCloudSync,
-  loadGamesCatalog,
+  preloadGamesCatalog,
   loadSettingsModal,
 } from "../../app/loaders.ts";
 
@@ -64,8 +64,8 @@ export default function TopBar() {
           id="choi"
           class="icon-btn"
           data-tooltip={gamesViewSignal.value ? "search" : "games"}
-          onPointerEnter={() => void loadGamesCatalog()}
-          onFocus={() => void loadGamesCatalog()}
+          onPointerEnter={preloadGamesCatalog}
+          onFocus={preloadGamesCatalog}
           onClick={handleGamesClick}
         >
           <span id="games-icon" />
@@ -75,8 +75,8 @@ export default function TopBar() {
           id="media-catalog"
           class="icon-btn"
           data-tooltip={animeViewSignal.value ? "search" : "anime"}
-          onPointerEnter={() => void loadAnimeCatalog()}
-          onFocus={() => void loadAnimeCatalog()}
+          onPointerEnter={preloadAnimeCatalog}
+          onFocus={preloadAnimeCatalog}
           onClick={handleAnimeClick}
         >
           <span id="anime-icon" />

@@ -25,7 +25,6 @@ body.games-view .meow,
 body.anime-view .meow {
   overflow-y: auto;
   overscroll-behavior: contain;
-  scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   scrollbar-gutter: stable;
 }
@@ -231,14 +230,17 @@ body.anime-view .anime-page {
   transform: scale(1.05);
 }
 
-.game-info h1,
-.anime-info h1 {
-  margin: 0;
-  font-size: 10px;
-  font-weight: 300;
-  color: var(--game-info-text);
-  line-height: 1.4;
-  text-align: left;
+.catalog-canvas-area {
+  position: relative;
+  width: 100%;
+}
+
+.catalog-canvas {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  display: block;
+  outline: none;
 }
 
 .game-cover.skeleton,

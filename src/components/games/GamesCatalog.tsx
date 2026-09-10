@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "preact/hooks";
-import { memo } from "preact/compat";
 import {
   fetchGameData,
   resetGameCache,
@@ -16,57 +15,13 @@ import { app } from "../../core/runtime/app.ts";
 import { getStoredGameSource } from "../../core/config/settingsOptions.ts";
 import { useMenuView } from "../../hooks/useMenuView.ts";
 import CatalogView from "../catalog/CatalogView.tsx";
-import CatalogImage from "../catalog/CatalogImage.tsx";
-import CatalogSkeletonCard, {
-  CATALOG_SKELETON_KEYS,
-} from "../catalog/CatalogSkeletonCard.tsx";
 import "../../assets/styles/catalog/catalog.css";
 import "../../assets/styles/games/games.css";
 
 const SVG_GAMEPAD = svgIcon("IconGamecontroller", { solid: true });
 const SVG_SEARCH = svgIcon("IconMagnifyingGlass2");
-const GameCard = memo(function GameCard({
-  game,
-  onPlay,
-}: {
-  game: GameEntry;
-  onPlay: (game: GameEntry) => void;
-}) {
-  return (
-    <article
-      class="game-card"
-      role="button"
-      tabIndex={0}
-      onClick={() => onPlay(game)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onPlay(game);
-        }
-      }}
-    >
-      <CatalogImage
-        className="game-cover"
-        src={game.coverUrl}
-        alt={game.name}
-        fallbackSize={30}
-      />
-      <div class="game-info">
-        <h1>{game.name}</h1>
-      </div>
-    </article>
-  );
-});
-
-function renderGameSkeleton(key: string) {
-  return (
-    <CatalogSkeletonCard
-      key={key}
-      cardClassName="game-card"
-      coverClassName="game-cover"
-      infoClassName="game-info"
-    />
-  );
+function gameCard(game: GameEntry) {
+  return { title: game.name, cover: game.coverUrl };
 }
 
 export default function GamesCatalog({
@@ -219,7 +174,7 @@ export default function GamesCatalog({
   }, [allGames, query]);
 
   const placeholder = loaded
-    ? `search through ${allGames.length} games... ◝(ᵔᗜᵔ)◜`
+    ? "search games... ◝(ᵔᗜᵔ)◜"
     : "fetching games...";
 
   return (
@@ -240,16 +195,9 @@ export default function GamesCatalog({
       onQueryChange={setQuery}
       gridVisible={filteredGames.length > 0}
       showSkeleton={!loaded}
-      skeletonKeys={CATALOG_SKELETON_KEYS}
       items={filteredGames}
-      renderSkeleton={renderGameSkeleton}
-      renderItem={(game) => (
-        <GameCard
-          key={`${game.sourceKey}-${game.gameUrl}`}
-          game={game}
-          onPlay={handlePlay}
-        />
-      )}
+      getCard={gameCard}
+      onSelect={handlePlay}
       emptyMessage={
         loaded && filteredGames.length === 0
           ? error || negativeMessage("zero matching games were found")

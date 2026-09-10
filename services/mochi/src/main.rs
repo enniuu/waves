@@ -240,7 +240,11 @@ async fn async_main(tuning: tuning::MochiTuning) -> AppResult<()> {
 
     spawn_rebalancer(
         vec![
-            CapacityTarget::new(request_permit.clone(), 512 * 1024, Workload::Io),
+            CapacityTarget::new(
+                request_permit.clone(),
+                tuning.ram_cache_limit as u64,
+                Workload::Io,
+            ),
             CapacityTarget::new(
                 stream_upstream_permit.clone(),
                 tuning.ram_cache_limit as u64,

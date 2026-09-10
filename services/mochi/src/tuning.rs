@@ -34,7 +34,9 @@ pub fn detect() -> MochiTuning {
         .and_then(|value| value.parse::<u64>().ok())
         .filter(|count| (1..=32).contains(count))
         .unwrap_or(1);
-    let ram_mb = sys.total_memory() / (1024 * 1024) / instances;
+    let (memory_bytes, _) =
+        adaptive_capacity::memory_budget(sys.total_memory(), sys.available_memory());
+    let ram_mb = (sys.total_memory() / instances).min(memory_bytes) / (1024 * 1024);
     let cores = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(2)
@@ -112,10 +114,13 @@ fn compute(ram_mb: u64, cores: usize, disk_mb: u64) -> MochiTuning {
     let pool_idle_per_host_html = (cores * 2).clamp(2, 16);
     let pool_idle_timeout_secs = if ram_mb < 8192 { 120 } else { 300 };
 
-    let request_permits_min = cores.saturating_mul(4).clamp(8, 64);
+    let request_permits_min = cores
+        .saturating_mul(4)
+        .clamp(8, 64)
+        .min((ram_mb / 32).max(1) as usize);
     let request_permits_max = cores
         .saturating_mul(64)
-        .min((ram_mb / 8).max(request_permits_min as u64) as usize)
+        .min((ram_mb / 32).max(request_permits_min as u64) as usize)
         .clamp(request_permits_min, 1024);
     let request_permits = cores
         .saturating_mul(24)
@@ -181,6 +186,16 @@ fn compute(ram_mb: u64, cores: usize, disk_mb: u64) -> MochiTuning {
 #[cfg(test)]
 mod tests {
     use super::compute;
+
+    #[test]
+    fn bounds_requests_within_a_small_service_budget() {
+        for cores in [1, 8, 64] {
+            let tuning = compute(844, cores, 100_000);
+            assert!(tuning.request_permits_max <= 26);
+            assert!(tuning.request_permits <= tuning.request_permits_max);
+            assert!(tuning.request_permits_min <= tuning.request_permits);
+        }
+    }
 
     #[test]
     fn keeps_stream_entries_small_on_every_host_size() {

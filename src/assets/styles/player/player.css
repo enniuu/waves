@@ -135,7 +135,6 @@
   right: 24px;
   bottom: 92px;
   z-index: 6;
-  backdrop-filter: blur(10px);
 }
 .player-skip-marker:hover,
 .player-action-button:hover {
@@ -164,7 +163,6 @@
   background: var(--bg-surface-7);
   color: var(--text-primary);
   font-family: "Lexend", sans-serif;
-  backdrop-filter: blur(10px);
 }
 .player-next-episode-copy {
   display: flex;
@@ -637,7 +635,6 @@
   padding: 24px;
   max-width: 380px;
   width: 90%;
-  backdrop-filter: blur(10px);
 }
 .shortcuts-card h3 {
   margin: 0 0 16px;

@@ -1364,6 +1364,8 @@ async fn fetch_and_cache(
                 let status = StatusCode::from_u16(cached.status).unwrap_or(StatusCode::OK);
                 return Ok((status, res_headers, cached.body.clone()).into_response());
             }
+
+            Ok(Err(_)) => {}
             _ => {
                 return Err(Box::new(classified_error_response(
                     StatusCode::GATEWAY_TIMEOUT,
@@ -1583,7 +1585,7 @@ async fn fetch_and_cache(
                                 accumulator.extend_from_slice(&chunk);
                             } else {
                                 is_too_large_for_ram = true;
-                                accumulator.clear();
+                                accumulator = Vec::new();
                             }
                         }
 

@@ -4,6 +4,20 @@ export const loadGamesCatalog = () =>
 export const loadAnimeCatalog = () =>
   import("../components/anime/AnimeCatalog.tsx");
 
+export function preloadGamesCatalog() {
+  void loadGamesCatalog().catch(() => {});
+  void import("../features/games/games.ts")
+    .then(({ fetchGameData }) => fetchGameData())
+    .catch(() => {});
+}
+
+export function preloadAnimeCatalog() {
+  void loadAnimeCatalog().catch(() => {});
+  void import("../features/anime/anime.ts")
+    .then(({ fetchAnimeData }) => fetchAnimeData("anime"))
+    .catch(() => {});
+}
+
 export const loadNewTabModal = () =>
   import("../components/browser/NewTabModal.tsx");
 
