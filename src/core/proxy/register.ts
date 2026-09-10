@@ -1,3 +1,4 @@
+import { BareMuxConnection } from "@mercuryworkshop/bare-mux";
 import { initializeFolioController } from "./folio";
 import {
   formatRuntimeMessage,
@@ -32,13 +33,8 @@ interface BareMuxConnectionInstance {
 declare global {
   interface Window {
     lyraConnection: LyraConnectionManager;
-    BareMux?: {
-      BareMuxConnection: new (path: string) => BareMuxConnectionInstance;
-    };
   }
 }
-
-declare const BareMux: Window["BareMux"];
 
 const STATES = Object.freeze({
   IDLE: "IDLE",
@@ -156,11 +152,6 @@ class LyraConnectionManager {
   preFlightChecks(): boolean {
     if (!navigator.serviceWorker) {
       this.updateStatus("fatal: service workers are not supported!", "error");
-      this.setState(STATES.FAILED);
-      return false;
-    }
-    if (typeof BareMux !== "object" || !BareMux.BareMuxConnection) {
-      this.updateStatus("fatal: baremux library not found!", "error");
       this.setState(STATES.FAILED);
       return false;
     }
@@ -286,7 +277,7 @@ class LyraConnectionManager {
 
     try {
       if (!this.bareMuxConnection) {
-        this.bareMuxConnection = new BareMux!.BareMuxConnection(
+        this.bareMuxConnection = new BareMuxConnection(
           runtimeAssetPath("bmux", "worker.js"),
         );
         window.Lyra.bareMuxConnection = this.bareMuxConnection;

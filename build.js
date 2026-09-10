@@ -318,14 +318,6 @@ export default function lyraPlugin(
       }
 
       const bundleInputPaths = [
-        path.join(
-          projectRoot,
-          "node_modules",
-          "@mercuryworkshop",
-          "bare-mux",
-          "dist",
-          "index.js",
-        ),
         path.join(projectRoot, "public", "b", "fl", "folio.js"),
         path.join(projectRoot, "public", "b", "fl", "controller.api.js"),
         path.join(projectRoot, "public", "b", "fl", "folio-utils.js"),

@@ -131,9 +131,9 @@ for (const [id, filePath] of Object.entries(bundleSourceById)) {
 }
 
 const fallbackBundle = (() => {
-  const parts = Object.values(bundleById)
-    .filter(Boolean)
-    .map((bundle) =>
+  const parts = Object.entries(bundleById)
+    .filter(([id]) => id !== "1")
+    .map(([, bundle]) =>
       Buffer.from(
         bundle
           .toString("utf-8")

@@ -5,10 +5,9 @@ let scriptPromise: Promise<void> | null = null;
 
 function hasProxyGlobals(): boolean {
   const runtime = window as typeof window & {
-    BareMux?: unknown;
     $folioController?: { Controller?: unknown };
   };
-  return Boolean(runtime.BareMux && runtime.$folioController?.Controller);
+  return Boolean(runtime.$folioController?.Controller);
 }
 
 function loadProxyScript(): Promise<void> {
