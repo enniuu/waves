@@ -108,6 +108,10 @@
   transform: scale(1.05);
 }
 
+.bookmark-link:active {
+  transform: scale(1);
+}
+
 .bookmark-icon {
   width: 35px;
   height: 35px;

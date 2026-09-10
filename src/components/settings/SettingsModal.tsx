@@ -79,7 +79,6 @@ const SETTINGS_TABS: readonly {
   { id: "cloaking", icon: "IconGhost", label: "cloaking" },
   { id: "extensions", icon: "IconPuzzle", label: "extensions" },
   { id: "advanced", icon: "IconHammer2", label: "advanced" },
-  { id: "about", icon: "IconHeart", label: "credits" },
 ] as const;
 
 interface SelectorProps {
@@ -795,23 +794,6 @@ export default function SettingsModal({
           </div>
           )}
 
-          {activeTab === "about" && (
-          <div class="tab-content active">
-            <div class="settings-item">
-              <label>credits</label>
-              <p>selenite - game source</p>
-              <p>edurocks - game source</p>
-              <p>gn-math - game source</p>
-              <p>wasm.rip - game source</p>
-              <p>velara - game source</p>
-              <p>truffled - game source</p>
-              <p>mercury workshop - scramjet, epoxy, and libcurl</p>
-            </div>
-            <div class="settings-item">
-              <label>thats it bye bye!! (˵◝ ⩊  ◜˵マ</label>
-            </div>
-          </div>
-          )}
         </div>
       </div>
       <button

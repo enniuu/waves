@@ -40,29 +40,27 @@
 }
 
 .episode-season-tab {
-  padding: 5px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--bg-surface-2);
+  padding: 6px 10px;
+  border: none;
+  border-radius: 10px;
+  background-color: var(--bg-surface-2);
   color: var(--text-secondary);
   font-size: 11px;
   font-weight: 400;
   cursor: pointer;
-  transition:
-    border-color 0.15s,
-    background 0.15s,
-    color 0.15s;
+  transition: background 0.1s ease, transform 0.1s ease, color 0.1s ease;
 }
 
 .episode-season-tab:hover {
-  border-color: var(--accent-color);
+  background-color: var(--hover-bg);
   color: var(--text-primary);
+  transform: scale(1.02);
 }
 
 .episode-season-tab.is-active {
-  border-color: var(--accent-color);
-  background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+  background-color: var(--active-bg);
   color: var(--text-primary);
+  transform: scale(1);
 }
 
 @media (max-width: 700px) {

@@ -330,7 +330,7 @@ input[type="checkbox"]:checked:hover::before {
   display: flex;
   align-items: center;
   gap: 6px;
-  transition: color 0.02s ease;
+  transition: color 0.1s ease;
 }
 
 .tab-button svg {
@@ -347,7 +347,7 @@ input[type="checkbox"]:checked:hover::before {
 }
 
 .tab-button:hover {
-  color: var(--color-close-btn);
+  background-color: var(--hover-bg);
 }
 
 .tab-button.active {
